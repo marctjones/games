@@ -2,6 +2,7 @@ class_name HeartsModel
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
 var deck: Array = []
@@ -19,6 +20,10 @@ var turn := 0
 var round_over := false
 var pass_direction := "left"
 var pass_summary := ""
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_round() -> void:
 	deck = CardTools.make_deck()
@@ -52,8 +57,10 @@ func advance_bots() -> void:
 
 func pick_bot_card(player: int) -> Dictionary:
 	var legal := legal_cards(player)
-	legal.sort_custom(func(a, b): return bot_card_score(a) > bot_card_score(b))
-	return legal[0]
+	var scored := []
+	for card in legal:
+		scored.append({"item": card, "score": bot_card_score(card)})
+	return OpponentPolicy.pick_scored(scored, opponent_difficulty)
 
 func bot_card_score(card: Dictionary) -> int:
 	var score := CardTools.rank_value(card.rank)

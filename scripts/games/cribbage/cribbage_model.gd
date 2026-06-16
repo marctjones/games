@@ -2,6 +2,7 @@ class_name CribbageModel
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
 var deck: Array = []
@@ -16,6 +17,10 @@ var player_count := 2
 var player_score_total := 0
 var computer_score_total := 0
 var hands_played := 0
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_hand() -> void:
 	deck = CardTools.make_deck()
@@ -64,7 +69,7 @@ func score_discards() -> String:
 		player.erase(card)
 		crib.append(card)
 	for computer in bots:
-		var bot_discards := choose_bot_discards_for(computer, discard_goal())
+		var bot_discards := choose_opponent_discards_for(computer, discard_goal())
 		for card in bot_discards:
 			computer.erase(card)
 			crib.append(card)
@@ -264,6 +269,23 @@ func choose_bot_discards_for(hand: Array, count: int) -> Array:
 				best_score = score
 				best_discards = discard_pair
 	return best_discards
+
+func choose_opponent_discards_for(hand: Array, count: int) -> Array:
+	match OpponentPolicy.normalize(opponent_difficulty):
+		OpponentPolicy.BEGINNER:
+			return _lowest_discards(hand, count)
+		OpponentPolicy.CASUAL:
+			var best := choose_bot_discards_for(hand, count)
+			if best.size() > 0:
+				var alternatives := _lowest_discards(hand, count)
+				if alternatives.size() == count:
+					return alternatives
+	return choose_bot_discards_for(hand, count)
+
+func _lowest_discards(hand: Array, count: int) -> Array:
+	var sorted := hand.duplicate()
+	sorted.sort_custom(func(a, b): return CardTools.rank_value(a.rank) < CardTools.rank_value(b.rank))
+	return sorted.slice(0, min(count, sorted.size()))
 
 func _kept_after_discards(hand: Array, discards: Array) -> Array:
 	var kept := []

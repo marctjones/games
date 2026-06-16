@@ -4,19 +4,19 @@ Godot 4 prototype for learning classic multiplayer card and board games as one h
 
 ## Current playable modules
 
-- Hearts: one human player against three basic bot opponents. Passing is omitted in this first rules prototype.
-- Blackjack: one human player against a basic dealer AI that stands on 17, with optional computer seats at the table.
-- Cribbage: 2-4 player discard-selection trainer with basic computer opponents. This first module covers discard choice and hand scoring; pegging is not implemented yet.
+- Hearts: one human player against three computer opponents, automatic pass direction, trick scoring, and match score tracking.
+- Blackjack: one human player against a rule-controlled dealer, with optional computer seats, split/double actions, and table score tracking.
+- Cribbage: 2-4 player discard-selection trainer with basic computer opponents, hand scoring, crib scoring, and a simplified pegging drill.
 - Gin Rummy: one human player against a basic deadwood-reduction bot.
 - Rummy 500: one human player against a basic computer opponent, with stock/discard draw, melds, layoffs, discard-to-end-turn flow, and hand scoring toward 500.
 - Klondike Solitaire: one-player tableau/foundation trainer with stock/waste draw, legal tableau moves, foundation moves, and move hints.
 - Five-Card Draw Poker: one human player against one to five basic draw/discard bots with hand evaluation.
 - Texas Hold'em: simplified cash-game trainer with one human player, one to five computer seats, community-card stages, fold/check-call decisions, dollar bankrolls, and seven-card showdown evaluation.
 - Basic Rummy: one human player against a basic computer opponent, sharing the rummy meld/layoff workflow with simpler go-out scoring.
-- Euchre: four-player partnership trick-taking trainer with a 24-card deck, random trump, follow-suit play, hidden/revealed opponent hands, and team trick scoring. Bidding, bowers, and going alone are reserved for a deeper rules pass.
-- Spades: four-player partnership trick-taking trainer with spades as trump, follow-suit play, hidden/revealed opponent hands, and team trick scoring. Bidding and bags are reserved for the next scoring pass.
-- Bridge Trainer: four-player partnership trick-taking trainer for suit-following and hand-reading practice. Contract bidding is reserved for the next bridge pass.
-- Pinochle: four-player partnership trick-taking trainer with a 48-card double deck, random trump, point-card trick scoring, hidden/revealed opponent hands, and coach card suggestions. Bidding and meld scoring are reserved for the next deeper rules pass.
+- Euchre: four-player partnership trick-taking trainer with a 24-card deck, random trump, bowers, follow-suit play, hidden/revealed opponent hands, and maker-team scoring.
+- Spades: four-player partnership trick-taking trainer with spades as trump, automatic estimated bids, bags, follow-suit play, hidden/revealed opponent hands, and team scoring.
+- Bridge Trainer: four-player partnership trick-taking trainer with simplified high-card-point auto-contracts, suit following, and hand-reading practice.
+- Pinochle: four-player partnership trick-taking trainer with a 48-card double deck, random trump, point-card trick scoring, simplified meld/bid scoring, hidden/revealed opponent hands, and coach card suggestions.
 - Whist: four-player partnership trick-taking trainer with full-deck follow-suit play, hidden/revealed opponent hands, and team trick scoring.
 - Canasta: one human player against a basic computer opponent with two-deck draw/discard flow, same-rank melds, seven-card canasta bonuses, automatic hand scoring, and revealable opponent hand.
 - Tic-tac-toe: one human player against a simple tactical AI.
@@ -34,9 +34,25 @@ Playable modules show valid player counts, computer-opponent counts, and automat
 
 Each playable game uses a right-side Learning Coach with separate high-contrast sections for advice / next move, score, and rules / strategy, so current guidance stays visible without mixing every kind of text into one small status strip. Current hints use the shared `StrategyText` format: concrete action, reason, watch-out, drill, and post-hand review notes. Blackjack suggests hit/stand/double/split from the hand and dealer up-card, draw poker and cribbage suggest discards, rummy/canasta games identify meld or discard choices, Texas Hold'em explains preflop and board-stage reads, Klondike suggests visible legal moves, trick-taking games suggest legal cards, Hearts suggests a penalty-avoidance card, and board games name a simple tactical move.
 
+## Opponent difficulty and fair play
+
+The sidebar difficulty selector applies to the current game and the next game opened. Difficulty levels are Beginner, Casual, Standard, Advanced, and Expert. Lower levels choose weaker legal moves or discard plans; higher levels use the strongest available non-cheating heuristic for that game.
+
+Computer opponents must not cheat. In card games they may use their own private hand, public table cards, public discards/melds/tricks, score, and rules context. They must not inspect the human player's hidden hand unless the user explicitly reveals it for display, and they must not inspect unknown stock/deck cards. In board games all board state is public, so stronger opponents can use legal move search over the visible position.
+
 ## Queued modules
 
 No catalog entries are currently placeholders. The former queued entries now route to first-pass trainer modules. The next roadmap layer is to deepen individual rule systems rather than merely making the entries clickable.
+
+## Remaining roadmap
+
+1. Make priority card games rules-complete: exact scoring variants, complete betting/bidding, full match progression, and edge cases.
+2. Replace trainer-grade board games with full rules engines: chess check/checkmate/castling/en passant/promotion, Go ko/suicide/territory scoring, backgammon dice/bar/bearing-off/doubling, Nine Men's Morris mill captures/flying, and full Ludo/Pachisi race rules.
+3. Improve AI quality without hidden information: deeper heuristics first, then search/simulation where appropriate.
+4. Build the learning system: mistake review, hand/trick replay, drills, spaced repetition, progress tracking, and richer explanations.
+5. Add persistence for player profile, lesson history, match scores, bankrolls, and long-running sessions.
+6. Polish UX per game: drag/drop cards, clearer turn prompts, animations, undo where valid, keyboard shortcuts, and accessibility sizing.
+7. Finish release engineering: explicit project license, CI validation, macOS export, then Windows/Linux exports before mobile.
 
 ## Run
 
@@ -60,6 +76,7 @@ Validation helpers:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/tools/verify_priority_card_games.gd
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/tools/verify_strategy_guidance.gd
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/tools/verify_queued_trainers.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/tools/verify_opponent_policy.gd
 ```
 
 ## Architecture
@@ -69,6 +86,7 @@ Validation helpers:
 - `scripts/app/dashboard_view.gd`: home dashboard for playable modules.
 - `scripts/app/game_catalog.gd`: ordered game roadmap and playable/queued metadata.
 - `scripts/core/card_tools.gd`: shared card/deck/rank/sorting/text helpers used by card games.
+- `scripts/core/opponent_policy.gd`: shared difficulty levels, fair-play policy text, and legal-choice selection helpers.
 - `scripts/games/*/*_model.gd`: game state, legal moves, scoring, and basic computer play.
 - `scripts/games/*/*_view.gd`: game-specific Godot controls and interaction wiring.
 - `scripts/games/poker/poker_evaluator.gd`: reusable poker hand evaluator for Five-Card Draw and Texas Hold'em.
@@ -85,5 +103,6 @@ Validation helpers:
 - `scripts/tools/verify_priority_card_games.gd`: verifies Klondike setup, Texas Hold'em stage flow, seven-card poker evaluation, Basic Rummy scoring, Canasta meld scoring, Pinochle setup, and trick-taking mode setup.
 - `scripts/tools/verify_strategy_guidance.gd`: verifies structured coaching across the strategy helpers.
 - `scripts/tools/verify_queued_trainers.gd`: verifies that formerly queued trainer modules are playable and expose legal moves or legal cards.
+- `scripts/tools/verify_opponent_policy.gd`: verifies the difficulty policy, legal move selection, and no hidden-stock peeking in rummy bots.
 
-Recent roadmap work moved Gin Rummy deadwood/meld optimization onto the shared `RummyTools` path, added post-hand review text, and deepened first-rule layers for Hearts passing, Cribbage pegging drills, Blackjack double/split actions, Spades bids/bags, Euchre bowers/maker scoring, Bridge auto-contracts, Pinochle meld/bid scoring, and Canasta wild/red-three/frozen-discard rules. The next architecture step is to replace the remaining first-pass trainer approximations with fuller rules engines one game at a time.
+Recent roadmap work moved Gin Rummy deadwood/meld optimization onto the shared `RummyTools` path, added post-hand review text, added the shared opponent difficulty/fair-play policy, removed rummy hidden-stock peeking, and deepened first-rule layers for Hearts passing, Cribbage pegging drills, Blackjack double/split actions, Spades bids/bags, Euchre bowers/maker scoring, Bridge auto-contracts, Pinochle meld/bid scoring, and Canasta wild/red-three/frozen-discard rules. The next architecture step is to replace the remaining first-pass trainer approximations with fuller rules engines one game at a time.

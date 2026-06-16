@@ -2,6 +2,7 @@ class_name TicTacToeModel
 extends RefCounted
 
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 
 const WIN_LINES := [
 	[0, 1, 2],
@@ -22,6 +23,10 @@ var last_computer_move := ""
 var player_wins := 0
 var computer_wins := 0
 var draws := 0
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_game() -> void:
 	board = ["", "", "", "", "", "", "", "", ""]
@@ -53,6 +58,14 @@ func winner() -> String:
 	return ""
 
 func best_ai_move() -> int:
+	match OpponentPolicy.normalize(opponent_difficulty):
+		OpponentPolicy.BEGINNER:
+			return _ranked_legal_ai_move(false)
+		OpponentPolicy.CASUAL:
+			var urgent := _immediate_ai_move()
+			return urgent if urgent >= 0 else _ranked_legal_ai_move(false)
+		OpponentPolicy.EXPERT:
+			return _minimax_ai_move()
 	return _best_move_for("O", "X")
 
 func _best_move_for(mark: String, opponent: String) -> int:
@@ -74,6 +87,78 @@ func _best_move_for(mark: String, opponent: String) -> int:
 		if board[i] == "":
 			return i
 	return -1
+
+func _immediate_ai_move() -> int:
+	for candidate_mark in ["O", "X"]:
+		for i in range(9):
+			if board[i] == "":
+				board[i] = candidate_mark
+				var found_winner := winner()
+				board[i] = ""
+				if found_winner == candidate_mark:
+					return i
+	return -1
+
+func _ranked_legal_ai_move(best_first: bool) -> int:
+	var scored := []
+	for i in range(9):
+		if board[i] != "":
+			continue
+		scored.append({"item": i, "score": _move_priority(i)})
+	if scored.is_empty():
+		return -1
+	if best_first:
+		return int(OpponentPolicy.pick_scored(scored, OpponentPolicy.STANDARD))
+	return int(OpponentPolicy.pick_scored(scored, opponent_difficulty))
+
+func _move_priority(index: int) -> int:
+	if _move_wins(index, "O"):
+		return 100
+	if _move_wins(index, "X"):
+		return 90
+	if index == 4:
+		return 50
+	if index in [0, 2, 6, 8]:
+		return 30
+	return 10
+
+func _minimax_ai_move() -> int:
+	var best_score := -999
+	var best_move := -1
+	for i in range(9):
+		if board[i] != "":
+			continue
+		board[i] = "O"
+		var score := _minimax_score(false)
+		board[i] = ""
+		if score > best_score:
+			best_score = score
+			best_move = i
+	return best_move
+
+func _minimax_score(maximizing: bool) -> int:
+	var found_winner := winner()
+	if found_winner == "O":
+		return 1
+	if found_winner == "X":
+		return -1
+	if not board.has(""):
+		return 0
+	if maximizing:
+		var best := -999
+		for i in range(9):
+			if board[i] == "":
+				board[i] = "O"
+				best = max(best, _minimax_score(false))
+				board[i] = ""
+		return best
+	var worst := 999
+	for i in range(9):
+		if board[i] == "":
+			board[i] = "X"
+			worst = min(worst, _minimax_score(true))
+			board[i] = ""
+	return worst
 
 func _finish_if_needed() -> bool:
 	var found_winner := winner()

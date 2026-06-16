@@ -271,6 +271,9 @@ static func card_support_text(card: Dictionary, hand: Array) -> String:
 		return "It is isolated from current set/run support."
 	return "It has %s." % CardTools.join_strings(pieces, " and ")
 
+static func visible_pickup_score(card: Dictionary, hand: Array) -> int:
+	return _card_support_score(card, hand)
+
 static func _card_support_score(card: Dictionary, hand: Array) -> int:
 	var score := 0
 	var card_value := CardTools.rank_low_value(card.rank)

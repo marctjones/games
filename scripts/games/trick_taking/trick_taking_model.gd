@@ -2,6 +2,7 @@ class_name TrickTakingModel
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
 var mode := "spades"
@@ -28,6 +29,10 @@ var alone_player := -1
 var contract_team := 0
 var contract_level := 1
 var contract_suit := ""
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_round(p_mode: String) -> void:
 	mode = p_mode
@@ -122,8 +127,25 @@ func advance_bots() -> void:
 
 func pick_bot_card(player: int) -> Dictionary:
 	var legal := legal_cards(player)
-	var suggested := suggest_card(player, legal)
-	return suggested
+	var scored := []
+	for card in legal:
+		scored.append({"item": card, "score": bot_choice_score(player, card)})
+	return OpponentPolicy.pick_scored(scored, opponent_difficulty)
+
+func bot_choice_score(player: int, card: Dictionary) -> float:
+	if current_trick.is_empty():
+		return -float(lead_score(card))
+	var lead_suit: String = effective_suit(current_trick[0]["card"])
+	var winning_power := current_winning_power(lead_suit)
+	var winning_player := current_winning_player(lead_suit)
+	var power := card_power(card, lead_suit)
+	if team_for(winning_player) == team_for(player):
+		if power <= winning_power:
+			return -float(discard_score(card))
+		return -100.0 - float(discard_score(card))
+	if power > winning_power:
+		return 1000.0 - float(power)
+	return -float(discard_score(card))
 
 func play_card(player: int, card: Dictionary) -> void:
 	hands[player].erase(card)

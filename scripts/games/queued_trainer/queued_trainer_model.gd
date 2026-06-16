@@ -2,6 +2,7 @@ class_name QueuedTrainerModel
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
 var game_id := ""
@@ -25,6 +26,10 @@ var current_trick: Array = []
 var card_turn := 0
 var card_player_count := 3
 var tricks_won: Array = []
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func _init(p_game_id: String = "chess") -> void:
 	game_id = p_game_id
@@ -324,7 +329,7 @@ func _ai_board_move() -> void:
 	if moves.is_empty():
 		_check_board_outcome()
 		return
-	var move: Dictionary = moves[0]
+	var move: Dictionary = _choose_computer_board_move(moves)
 	if _is_placement_game():
 		var to: Vector2i = move["to"]
 		if game_id == "reversi":
@@ -338,6 +343,56 @@ func _ai_board_move() -> void:
 		_apply_board_move(move)
 	move_count += 1
 	_check_board_outcome()
+
+func _choose_computer_board_move(moves: Array) -> Dictionary:
+	var scored := []
+	for move in moves:
+		scored.append({"item": move, "score": _board_move_score(move, "computer")})
+	return OpponentPolicy.pick_scored(scored, opponent_difficulty)
+
+func _board_move_score(move: Dictionary, side: String) -> float:
+	if move.has("to") and not move.has("from"):
+		return _placement_score(move["to"], side)
+	var score := 0.0
+	var from: Vector2i = move["from"]
+	var to: Vector2i = move["to"]
+	if _is_enemy_at(to, side):
+		score += 80.0
+	score += float(abs(to.x - from.x) + abs(to.y - from.y))
+	var target_corner := Vector2i(0, board_size - 1) if side == "computer" else Vector2i(board_size - 1, 0)
+	var from_distance: int = abs(from.x - target_corner.x) + abs(from.y - target_corner.y)
+	var to_distance: int = abs(to.x - target_corner.x) + abs(to.y - target_corner.y)
+	score += float(from_distance - to_distance) * 3.0
+	if game_id == "chess":
+		score += _chess_piece_value(str(board[to.y][to.x]))
+	return score
+
+func _placement_score(pos: Vector2i, side: String) -> float:
+	if game_id == "reversi":
+		var piece := "C" if side == "computer" else "P"
+		var score := float(_reversi_flips(pos, piece).size())
+		if (pos.x == 0 or pos.x == board_size - 1) and (pos.y == 0 or pos.y == board_size - 1):
+			score += 20.0
+		return score
+	if game_id in ["go_9x9", "go_19x19"]:
+		var center := Vector2(board_size / 2.0, board_size / 2.0)
+		var distance := Vector2(pos.x, pos.y).distance_to(center)
+		return 20.0 - distance
+	return 0.0
+
+func _chess_piece_value(piece: String) -> float:
+	match piece.to_lower():
+		"p":
+			return 1.0
+		"n", "b":
+			return 3.0
+		"r":
+			return 5.0
+		"q":
+			return 9.0
+		"k":
+			return 100.0
+	return 0.0
 
 func _apply_board_move(move: Dictionary) -> void:
 	var from: Vector2i = move["from"]
@@ -475,8 +530,24 @@ func _pick_bot_card(hand: Array) -> Dictionary:
 				matching.append(card)
 		if not matching.is_empty():
 			legal = matching
-	legal.sort_custom(func(a, b): return CardTools.rank_value(a.rank) < CardTools.rank_value(b.rank))
-	return legal[0]
+	var scored := []
+	for card in legal:
+		scored.append({"item": card, "score": _bot_card_choice_score(card)})
+	return OpponentPolicy.pick_scored(scored, opponent_difficulty)
+
+func _bot_card_choice_score(card: Dictionary) -> float:
+	if current_trick.is_empty():
+		return -float(CardTools.rank_value(card.rank))
+	var lead_suit: String = current_trick[0]["card"].suit
+	var best := 0
+	for play in current_trick:
+		var played: Dictionary = play["card"]
+		if played.suit == lead_suit:
+			best = max(best, CardTools.rank_value(played.rank))
+	var power := CardTools.rank_value(card.rank) if card.suit == lead_suit else 0
+	if power > best:
+		return 1000.0 - float(power)
+	return -float(CardTools.rank_value(card.rank))
 
 func _score_card_trick() -> void:
 	var lead_suit: String = current_trick[0]["card"].suit

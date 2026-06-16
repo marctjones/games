@@ -3,6 +3,7 @@ extends Control
 const AppShell := preload("res://scripts/app/app_shell.gd")
 const DashboardView := preload("res://scripts/app/dashboard_view.gd")
 const GameCatalog := preload("res://scripts/app/game_catalog.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const UiFactory := preload("res://scripts/ui/ui_factory.gd")
 
 const BasicRummyView := preload("res://scripts/games/basic_rummy/basic_rummy_view.gd")
@@ -36,8 +37,10 @@ var status_label: Label
 var coach_panel: PanelContainer
 var score_label: Label
 var rules_label: Label
+var difficulty_option: OptionButton
 var current_view: VBoxContainer
 var current_game_id := "home"
+var opponent_difficulty := OpponentPolicy.DEFAULT
 var menu_buttons: Array = []
 
 func _ready() -> void:
@@ -67,12 +70,13 @@ func _refresh_responsive_layout() -> void:
 func _build_shell() -> void:
 	for child in get_children():
 		child.queue_free()
-	var shell := AppShell.build(self, _on_game_selected)
+	var shell := AppShell.build(self, _on_game_selected, _on_difficulty_selected, opponent_difficulty)
 	sidebar = shell["sidebar"]
 	game_area = shell["game_area"]
 	content_panel = shell["content_panel"]
 	game_scroll = shell["game_scroll"]
 	menu_buttons = shell["menu_buttons"]
+	difficulty_option = shell["difficulty_option"]
 
 func _refresh_sidebar_menu_buttons() -> void:
 	for item in menu_buttons:
@@ -126,7 +130,7 @@ func _show_home() -> void:
 	current_game_id = "home"
 	_clear_game_area()
 	_add_header("One-player classic games")
-	status_label.text = GameCatalog.home_status_text()
+	status_label.text = "%s\n\n%s" % [GameCatalog.home_status_text(), OpponentPolicy.policy_text(opponent_difficulty)]
 	DashboardView.build(game_area, _on_game_selected)
 
 func _on_game_selected(game_id: String) -> void:
@@ -193,6 +197,7 @@ func _mount_game_view(title: String, view: VBoxContainer) -> void:
 	rules_label.text = "Rules and strategy notes appear here for the selected game."
 	game_body_row.add_child(coach_panel)
 	view.setup(status_label, score_label, rules_label)
+	_apply_difficulty_to_current_view()
 
 func _show_queued_game(game_id: String) -> void:
 	var game_name := GameCatalog.name_for(game_id)
@@ -201,3 +206,30 @@ func _show_queued_game(game_id: String) -> void:
 	_clear_game_area()
 	_add_header(game_name)
 	status_label.text = "Queued module. This entry is reserved in the platform plan. Next implementation step: rules engine, legal move generator, basic computer opponent, and coaching hooks."
+
+func _on_difficulty_selected(index: int) -> void:
+	if difficulty_option == null:
+		return
+	var id := str(difficulty_option.get_item_metadata(index))
+	opponent_difficulty = OpponentPolicy.normalize(id)
+	if current_game_id == "home":
+		status_label.text = "%s\n\n%s" % [GameCatalog.home_status_text(), OpponentPolicy.policy_text(opponent_difficulty)]
+	else:
+		_apply_difficulty_to_current_view()
+
+func _apply_difficulty_to_current_view() -> void:
+	if current_view == null:
+		return
+	if current_view.has_method("set_difficulty"):
+		current_view.set_difficulty(opponent_difficulty)
+	else:
+		var model = current_view.get("model")
+		if model != null and model.has_method("set_difficulty"):
+			model.set_difficulty(opponent_difficulty)
+	if current_view.has_method("refresh_layout"):
+		current_view.refresh_layout()
+	if score_label != null:
+		var current_score := score_label.text
+		if current_score.find("\nDifficulty:") >= 0:
+			current_score = current_score.substr(0, current_score.find("\nDifficulty:"))
+		score_label.text = "%s\n%s" % [current_score, OpponentPolicy.policy_text(opponent_difficulty)]

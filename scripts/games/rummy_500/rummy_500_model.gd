@@ -2,6 +2,7 @@ class_name Rummy500Model
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const RummyTools := preload("res://scripts/games/rummy/rummy_tools.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
@@ -23,6 +24,10 @@ var computer_score := 0
 var hands_played := 0
 var player_hand_points := 0
 var computer_hand_points := 0
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_hand() -> void:
 	deck = CardTools.make_deck()
@@ -149,12 +154,8 @@ func bot_turn() -> void:
 		finish_hand("Stock is empty.")
 		return
 	var top_discard: Dictionary = discard[-1]
-	var with_discard := bot.duplicate()
-	with_discard.append(top_discard)
-	var with_stock := bot.duplicate()
-	with_stock.append(deck[-1])
 	var draw_source := "stock pile"
-	if RummyTools.deadwood_score(with_discard) <= RummyTools.deadwood_score(with_stock):
+	if _bot_should_take_visible_discard(top_discard):
 		bot.append(discard.pop_back())
 		draw_source = "discard pile"
 	else:
@@ -165,7 +166,7 @@ func bot_turn() -> void:
 	if bot.is_empty():
 		finish_hand("Computer went out.")
 		return
-	var bot_discard := RummyTools.choose_discard(bot)
+	var bot_discard := _bot_choose_discard()
 	bot.erase(bot_discard)
 	discard.append(bot_discard)
 	last_bot_action = "Computer drew from the %s, made %d meld%s, and discarded %s." % [
@@ -208,6 +209,27 @@ func _bot_layoff_cards() -> void:
 					break
 			if changed:
 				break
+
+func _bot_should_take_visible_discard(top_discard: Dictionary) -> bool:
+	var current_deadwood := RummyTools.deadwood_score(bot)
+	var with_discard := bot.duplicate()
+	with_discard.append(top_discard)
+	var discard_deadwood := RummyTools.deadwood_score(with_discard)
+	var improvement := current_deadwood - discard_deadwood
+	if improvement >= OpponentPolicy.rummy_visible_pickup_threshold(opponent_difficulty):
+		return true
+	return OpponentPolicy.allows_speculative_pickup(opponent_difficulty) and RummyTools.visible_pickup_score(top_discard, bot) >= 2
+
+func _bot_choose_discard() -> Dictionary:
+	var scored := []
+	for card in bot:
+		var test := bot.duplicate()
+		test.erase(card)
+		var score := -float(RummyTools.deadwood_score(test)) + float(RummyTools.card_points(card)) * 0.01
+		scored.append({"item": card, "score": score})
+	if scored.is_empty():
+		return bot[0]
+	return OpponentPolicy.pick_scored(scored, opponent_difficulty)
 
 func _hand_contains_all(hand: Array, cards: Array) -> bool:
 	for card in cards:

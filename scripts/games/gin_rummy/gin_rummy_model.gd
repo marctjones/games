@@ -2,6 +2,7 @@ class_name GinRummyModel
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const RummyTools := preload("res://scripts/games/rummy/rummy_tools.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
@@ -17,6 +18,10 @@ var last_draw_source := ""
 var player_score := 0
 var computer_score := 0
 var hands_played := 0
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_hand() -> void:
 	deck = CardTools.make_deck()
@@ -69,16 +74,9 @@ func bot_turn() -> void:
 		finish_hand("Stock is empty.")
 		return
 	var top_discard: Dictionary = discard[-1]
-	var current_deadwood := deadwood(bot)
-	var with_discard := bot.duplicate()
-	with_discard.append(top_discard)
-	var with_stock := bot.duplicate()
-	with_stock.append(deck[-1])
-	var discard_deadwood := deadwood(with_discard)
-	var stock_deadwood := deadwood(with_stock)
 	var draw_source := "stock pile"
 	var drawn_from_discard: Dictionary = {}
-	if discard_deadwood < current_deadwood and discard_deadwood <= stock_deadwood:
+	if _bot_should_take_visible_discard(top_discard):
 		drawn_from_discard = discard.pop_back()
 		bot.append(drawn_from_discard)
 		draw_source = "discard pile"
@@ -130,18 +128,27 @@ func choose_discard(hand: Array) -> Dictionary:
 	return choose_discard_except(hand, {})
 
 func choose_discard_except(hand: Array, forbidden_card: Dictionary) -> Dictionary:
-	var best_card: Dictionary = hand[0]
-	var best_deadwood := -1
+	var scored := []
 	for card in hand:
 		if forbidden_card.size() > 0 and card == forbidden_card:
 			continue
 		var test := hand.duplicate()
 		test.erase(card)
-		var score := RummyTools.deadwood_score(test)
-		if best_deadwood < 0 or score < best_deadwood or (score == best_deadwood and CardTools.pip_value(card.rank) > CardTools.pip_value(best_card.rank)):
-			best_deadwood = score
-			best_card = card
-	return best_card
+		var score := -float(RummyTools.deadwood_score(test)) + float(CardTools.pip_value(card.rank)) * 0.01
+		scored.append({"item": card, "score": score})
+	if scored.is_empty():
+		return hand[0]
+	return OpponentPolicy.pick_scored(scored, opponent_difficulty)
+
+func _bot_should_take_visible_discard(top_discard: Dictionary) -> bool:
+	var current_deadwood := deadwood(bot)
+	var with_discard := bot.duplicate()
+	with_discard.append(top_discard)
+	var discard_deadwood := deadwood(with_discard)
+	var improvement := current_deadwood - discard_deadwood
+	if improvement >= OpponentPolicy.rummy_visible_pickup_threshold(opponent_difficulty):
+		return true
+	return OpponentPolicy.allows_speculative_pickup(opponent_difficulty) and RummyTools.visible_pickup_score(top_discard, bot) >= 2
 
 func table_text() -> String:
 	var top_discard := "none" if discard.is_empty() else CardTools.card_text(discard[-1])

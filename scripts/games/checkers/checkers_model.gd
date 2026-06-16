@@ -2,6 +2,7 @@ class_name CheckersModel
 extends RefCounted
 
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 
 var board: Array = []
 var selected := Vector2i(-1, -1)
@@ -12,6 +13,10 @@ var last_player_move := ""
 var last_computer_move := ""
 var player_wins := 0
 var computer_wins := 0
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_game() -> void:
 	board = []
@@ -60,11 +65,17 @@ func ai_move() -> void:
 		player_wins += 1
 		last_message = "You win. The computer has no legal moves."
 		return
-	moves.sort_custom(func(a, b): return move_score(a, "b") > move_score(b, "b"))
-	apply_move(moves[0])
-	last_computer_move = move_text(moves[0])
+	var move := _choose_ai_move(moves)
+	apply_move(move)
+	last_computer_move = move_text(move)
 	turn = "r"
 	finish_if_needed()
+
+func _choose_ai_move(moves: Array) -> Dictionary:
+	var scored := []
+	for move in moves:
+		scored.append({"item": move, "score": move_score(move, "b")})
+	return OpponentPolicy.pick_scored(scored, opponent_difficulty)
 
 func move_score(move: Dictionary, side: String) -> int:
 	var score := 0

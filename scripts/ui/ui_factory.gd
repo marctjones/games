@@ -364,6 +364,14 @@ static func style_checkbox(toggle: CheckBox) -> void:
 	toggle.add_theme_color_override("font_pressed_color", Color("#17212b"))
 	toggle.add_theme_color_override("font_disabled_color", Color("#6f7d85"))
 
+static func style_option_button(option: OptionButton) -> void:
+	option.custom_minimum_size = Vector2(0, 34)
+	option.add_theme_font_size_override("font_size", 14)
+	option.add_theme_color_override("font_color", Color("#17212b"))
+	option.add_theme_stylebox_override("normal", panel_style(Color("#fffdf7"), 6, Color("#c8bfae"), 1))
+	option.add_theme_stylebox_override("hover", panel_style(Color("#fff5d8"), 6, Color("#a9935d"), 1))
+	option.add_theme_stylebox_override("pressed", panel_style(Color("#efd37a"), 6, Color("#8b7337"), 1))
+
 static func coach_message(primary: String, coach_tip: String = "", context: String = "") -> String:
 	var clean_primary := primary
 	if coach_tip != "":

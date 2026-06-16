@@ -50,7 +50,7 @@ static func playable_names() -> Array:
 	return names
 
 static func home_status_text() -> String:
-	return "Playable now: %s. These are multiplayer games configured for one human player against computer opponents. The remaining games are listed in priority order and ready for module implementation." % human_join(playable_names())
+	return "Playable now: %s. These are multiplayer tabletop games configured for one human player against honest computer opponents. No catalog entries are placeholders; the next roadmap layer is fuller rules, stronger non-cheating AI, and deeper coaching." % human_join(playable_names())
 
 static func human_join(items: Array) -> String:
 	if items.is_empty():

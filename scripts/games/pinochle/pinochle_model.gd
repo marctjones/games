@@ -88,7 +88,29 @@ func play_player_card(card: Dictionary) -> String:
 
 func advance_bots() -> void:
 	while turn != 0 and not round_over:
-		play_card(turn, suggest_card(turn, legal_cards(turn)))
+		play_card(turn, pick_bot_card(turn))
+
+func pick_bot_card(player: int) -> Dictionary:
+	var legal := legal_cards(player)
+	var scored := []
+	for card in legal:
+		scored.append({"item": card, "score": bot_choice_score(player, card)})
+	return OpponentPolicy.pick_scored(scored, opponent_difficulty)
+
+func bot_choice_score(player: int, card: Dictionary) -> float:
+	if current_trick.is_empty():
+		return -float(lead_score(card))
+	var lead_suit: String = current_trick[0]["card"].suit
+	var winning_power := current_winning_power(lead_suit)
+	var winning_player := current_winning_player(lead_suit)
+	var power := card_power(card, lead_suit)
+	if team_for(winning_player) == team_for(player):
+		if power <= winning_power:
+			return -float(discard_score(card))
+		return -100.0 - float(discard_score(card))
+	if power > winning_power:
+		return 1000.0 - float(power) + float(_current_trick_points()) * 5.0
+	return -float(discard_score(card))
 
 func play_card(player: int, card: Dictionary) -> void:
 	hands[player].erase(card)

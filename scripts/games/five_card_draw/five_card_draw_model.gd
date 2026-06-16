@@ -2,6 +2,7 @@ class_name FiveCardDrawModel
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const PokerEvaluator := preload("res://scripts/games/poker/poker_evaluator.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
@@ -16,6 +17,10 @@ var opponent_count := 1
 var player_wins := 0
 var computer_wins := 0
 var ties := 0
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_hand() -> void:
 	deck = CardTools.make_deck()
@@ -67,7 +72,7 @@ func showdown() -> String:
 	while player.size() < 5:
 		player.append(CardTools.draw_card(deck))
 	for opponent in bots:
-		var opponent_discards := bot_discards_for(opponent)
+		var opponent_discards := opponent_discards_for(opponent)
 		for card in opponent_discards:
 			opponent.erase(card)
 		while opponent.size() < 5:
@@ -145,6 +150,17 @@ func bot_discards_for(hand: Array) -> Array:
 	var plan := draw_plan_for(hand)
 	return plan["discards"]
 
+func opponent_discards_for(hand: Array) -> Array:
+	var plan := draw_plan_for(hand)
+	var discards: Array = plan["discards"]
+	match OpponentPolicy.normalize(opponent_difficulty):
+		OpponentPolicy.BEGINNER:
+			return _lowest_cards(hand, min(3, max(0, hand.size() - 2)))
+		OpponentPolicy.CASUAL:
+			if discards.size() > 1:
+				return discards.slice(0, discards.size() - 1)
+	return discards
+
 func draw_plan_for(hand: Array) -> Dictionary:
 	if hand.is_empty():
 		return {"keep": [], "discards": [], "reason": "No cards are available.", "watch": "Start a new hand."}
@@ -205,6 +221,11 @@ func _draw_plan_result(hand: Array, keep: Array, reason: String, watch: String) 
 		if not keep.has(card) and discards.size() < 3:
 			discards.append(card)
 	return {"keep": keep, "discards": discards, "reason": reason, "watch": watch}
+
+func _lowest_cards(hand: Array, count: int) -> Array:
+	var sorted := hand.duplicate()
+	sorted.sort_custom(func(a, b): return CardTools.rank_value(a.rank) < CardTools.rank_value(b.rank))
+	return sorted.slice(0, min(count, sorted.size()))
 
 func _straight_draw_keep(hand: Array) -> Array:
 	var best_keep := []

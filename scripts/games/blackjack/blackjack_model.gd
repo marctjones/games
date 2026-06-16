@@ -2,6 +2,7 @@ class_name BlackjackModel
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
 var deck: Array = []
@@ -22,6 +23,10 @@ var pushes := 0
 var computer_wins := 0
 var computer_losses := 0
 var computer_pushes := 0
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_hand() -> void:
 	deck = CardTools.make_deck()
@@ -134,6 +139,17 @@ func play_computer_hand(hand: Array) -> void:
 
 func computer_stand_value(hand: Array) -> int:
 	var dealer_up_value := hand_value([dealer[0]])
+	match OpponentPolicy.normalize(opponent_difficulty):
+		OpponentPolicy.BEGINNER:
+			return 15
+		OpponentPolicy.CASUAL:
+			return 16
+		OpponentPolicy.ADVANCED, OpponentPolicy.EXPERT:
+			if is_soft_hand(hand) and hand_value(hand) <= 17:
+				return 18
+			if dealer_up_value <= 6:
+				return 12
+			return 17
 	if dealer_up_value >= 7:
 		return 17
 	return 12

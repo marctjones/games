@@ -2,9 +2,10 @@ class_name AppShell
 extends RefCounted
 
 const GameCatalog := preload("res://scripts/app/game_catalog.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const UiFactory := preload("res://scripts/ui/ui_factory.gd")
 
-static func build(host: Control, game_selected: Callable) -> Dictionary:
+static func build(host: Control, game_selected: Callable, difficulty_selected: Callable, current_difficulty: String) -> Dictionary:
 	var background := StyleBoxFlat.new()
 	background.bg_color = Color("#222831")
 	host.add_theme_stylebox_override("panel", background)
@@ -38,6 +39,29 @@ static func build(host: Control, game_selected: Callable) -> Dictionary:
 	subheading.add_theme_color_override("font_color", Color("#c7d0d8"))
 	subheading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sidebar.add_child(subheading)
+
+	var difficulty_label := Label.new()
+	difficulty_label.text = "Opponent difficulty"
+	difficulty_label.add_theme_color_override("font_color", Color("#f2f4f6"))
+	sidebar.add_child(difficulty_label)
+
+	var difficulty_option := OptionButton.new()
+	for id in OpponentPolicy.option_ids():
+		difficulty_option.add_item(OpponentPolicy.label(id))
+		var item_index := difficulty_option.get_item_count() - 1
+		difficulty_option.set_item_metadata(item_index, id)
+		if id == OpponentPolicy.normalize(current_difficulty):
+			difficulty_option.selected = item_index
+	UiFactory.style_option_button(difficulty_option)
+	difficulty_option.item_selected.connect(difficulty_selected)
+	sidebar.add_child(difficulty_option)
+
+	var fairness := Label.new()
+	fairness.text = "Fair play: no hidden-hand or deck peeking."
+	fairness.add_theme_font_size_override("font_size", 12)
+	fairness.add_theme_color_override("font_color", Color("#c7d0d8"))
+	fairness.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sidebar.add_child(fairness)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -88,4 +112,5 @@ static func build(host: Control, game_selected: Callable) -> Dictionary:
 		"content_panel": content_panel,
 		"game_scroll": game_scroll,
 		"menu_buttons": menu_buttons,
+		"difficulty_option": difficulty_option,
 	}

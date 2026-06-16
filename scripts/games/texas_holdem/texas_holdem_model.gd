@@ -2,6 +2,7 @@ class_name TexasHoldemModel
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const PokerEvaluator := preload("res://scripts/games/poker/poker_evaluator.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
@@ -24,6 +25,10 @@ var current_bet := 10
 var hands_played := 0
 var last_message := ""
 var result_text := ""
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_hand() -> void:
 	deck = CardTools.make_deck()
@@ -143,15 +148,25 @@ func _bot_decisions() -> void:
 		if folded_bots[i]:
 			continue
 		var strength := bot_strength(i)
-		var threshold := 1
-		if stage == "preflop":
-			threshold = 0
-		if strength < threshold and current_bet > 10:
+		var threshold := _bot_call_threshold()
+		if strength < threshold:
 			folded_bots[i] = true
 			bot_results[i] = "folded"
 		else:
 			_pay_blind_for_computer(i, current_bet)
 			bot_results[i] = "called"
+
+func _bot_call_threshold() -> int:
+	match OpponentPolicy.normalize(opponent_difficulty):
+		OpponentPolicy.BEGINNER:
+			return 2 if stage != "preflop" else 1
+		OpponentPolicy.CASUAL:
+			return 1
+		OpponentPolicy.STANDARD, OpponentPolicy.ADVANCED:
+			return 1 if stage != "preflop" else 0
+		OpponentPolicy.EXPERT:
+			return 0
+	return 1
 
 func bot_strength(index: int) -> int:
 	var cards: Array = bots[index].duplicate()

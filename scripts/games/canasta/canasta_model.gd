@@ -2,6 +2,7 @@ class_name CanastaModel
 extends RefCounted
 
 const CardTools := preload("res://scripts/core/card_tools.gd")
+const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
 var deck: Array = []
@@ -20,6 +21,10 @@ var computer_score := 0
 var hands_played := 0
 var player_red_threes := 0
 var bot_red_threes := 0
+var opponent_difficulty := OpponentPolicy.DEFAULT
+
+func set_difficulty(difficulty: String) -> void:
+	opponent_difficulty = OpponentPolicy.normalize(difficulty)
 
 func new_hand() -> void:
 	deck = make_canasta_deck()
@@ -191,15 +196,17 @@ func _would_make_meld(hand: Array, card: Dictionary) -> bool:
 	return count >= 3
 
 func choose_discard(hand: Array) -> Dictionary:
-	var best: Dictionary = hand[0]
-	var best_count := 99
+	var scored := []
 	var counts := _rank_counts(hand)
 	for card in hand:
 		var count := int(counts[card.rank])
-		if count < best_count or (count == best_count and card_points(card) > card_points(best)):
-			best_count = count
-			best = card
-	return best
+		var score := -float(count) + float(card_points(card)) * 0.01
+		if is_wild(card):
+			score -= 3.0
+		scored.append({"item": card, "score": score})
+	if scored.is_empty():
+		return hand[0]
+	return OpponentPolicy.pick_scored(scored, opponent_difficulty)
 
 func finish_hand(reason: String) -> void:
 	if done:
