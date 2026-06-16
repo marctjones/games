@@ -16,7 +16,10 @@ func new_hand() -> void:
 	last_message = "Draw one card, make sets/runs when you can, then discard one card. First player out scores the opponent's cards."
 	last_bot_action = "Computer has not moved yet."
 	last_drawn_card = {}
+	last_drawn_cards = []
 	last_draw_source = ""
+	required_pickup_card = {}
+	allow_discard_pile_pickup = false
 	player_hand_points = 0
 	computer_hand_points = 0
 	for i in range(10):

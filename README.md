@@ -8,7 +8,7 @@ Godot 4 prototype for learning classic multiplayer card and board games as one h
 - Blackjack: one human player against a rule-controlled dealer, with optional computer seats, split/double actions, and table score tracking.
 - Cribbage: 2-4 player discard-selection trainer with basic computer opponents, hand scoring, crib scoring, and a simplified pegging drill.
 - Gin Rummy: one human player against a basic deadwood-reduction bot, with knock/gin flow, defender layoffs, gin and undercut bonuses, and 100-point match score tracking.
-- Rummy 500: one human player against a basic computer opponent, with stock/discard draw, melds, layoffs, discard-to-end-turn flow, and hand scoring toward 500.
+- Rummy 500: one human player against a basic computer opponent, with stock draw, visible discard-spread pickup, forced use of lower discard pickups, melds, layoffs, discard-to-end-turn flow, and hand scoring toward 500.
 - Klondike Solitaire: one-player tableau/foundation trainer with stock/waste draw, legal tableau moves, foundation moves, and move hints.
 - Five-Card Draw Poker: one human player against one to five basic draw/discard bots with hand evaluation.
 - Texas Hold'em: simplified cash-game trainer with one human player, one to five computer seats, community-card stages, fold/check-call decisions, dollar bankrolls, and seven-card showdown evaluation.
@@ -46,7 +46,7 @@ No catalog entries are currently placeholders. The former queued entries now rou
 
 ## Remaining roadmap
 
-1. Continue making priority card games rules-complete: Rummy 500 discard-pile pickup variants, Cribbage full round flow, trick-taking bidding/contracts, poker betting, blackjack table-rule options, and remaining edge cases.
+1. Continue making priority card games rules-complete: Cribbage full round flow, trick-taking bidding/contracts, poker betting, blackjack table-rule options, Rummy 500 variants, and remaining edge cases.
 2. Replace trainer-grade board games with full rules engines: chess check/checkmate/castling/en passant/promotion, Go ko/suicide/territory scoring, backgammon dice/bar/bearing-off/doubling, Nine Men's Morris mill captures/flying, and full Ludo/Pachisi race rules.
 3. Improve AI quality without hidden information: deeper heuristics first, then search/simulation where appropriate.
 4. Build the learning system: mistake review, hand/trick replay, drills, spaced repetition, progress tracking, and richer explanations.
@@ -105,4 +105,4 @@ Validation helpers:
 - `scripts/tools/verify_queued_trainers.gd`: verifies that formerly queued trainer modules are playable and expose legal moves or legal cards.
 - `scripts/tools/verify_opponent_policy.gd`: verifies the difficulty policy, legal move selection, and no hidden-stock peeking in rummy bots.
 
-Recent roadmap work moved Gin Rummy deadwood/meld optimization onto the shared `RummyTools` path, added real knock/gin/layoff/undercut scoring, added post-hand review text, added the shared opponent difficulty/fair-play policy, removed rummy hidden-stock peeking, and deepened first-rule layers for Hearts passing, Cribbage pegging drills, Blackjack double/split actions, Spades bids/bags, Euchre bowers/maker scoring, Bridge auto-contracts, Pinochle meld/bid scoring, and Canasta wild/red-three/frozen-discard rules. The next architecture step is to replace the remaining first-pass trainer approximations with fuller rules engines one game at a time.
+Recent roadmap work moved Gin Rummy deadwood/meld optimization onto the shared `RummyTools` path, added real knock/gin/layoff/undercut scoring, added Rummy 500 discard-spread pickup with forced lower-card use, added post-hand review text, added the shared opponent difficulty/fair-play policy, removed rummy hidden-stock peeking, and deepened first-rule layers for Hearts passing, Cribbage pegging drills, Blackjack double/split actions, Spades bids/bags, Euchre bowers/maker scoring, Bridge auto-contracts, Pinochle meld/bid scoring, and Canasta wild/red-three/frozen-discard rules. The next architecture step is to replace the remaining first-pass trainer approximations with fuller rules engines one game at a time.

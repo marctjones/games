@@ -32,7 +32,7 @@ func setup(p_status_label: Label, p_score_label: Label = null, p_rules_label: La
 	model.new_hand()
 	status_label.text = UiFactory.coach_message(model.last_message, model.guidance_text())
 	if rules_label != null:
-		rules_label.text = "Rummy 500: draw one card, then meld sets/runs, lay off single cards on existing melds, and discard one card to end your turn. Melded cards score immediately for the hand; cards left in hand count against you when someone goes out. Aces are low in runs in this trainer."
+		rules_label.text = "Rummy 500: draw from stock or from the visible discard spread, then meld sets/runs, lay off single cards on existing melds, and discard one card to end your turn. You may take a lower discard only if you also take every newer discard above it and immediately use the selected card in a meld or layoff. Melded cards score immediately; cards left in hand count against you when someone goes out. Aces are low in runs in this trainer."
 	var section := UiFactory.make_section()
 	add_child(section)
 	facts_label = UiFactory.make_fact_label()
@@ -45,6 +45,7 @@ func setup(p_status_label: Label, p_score_label: Label = null, p_rules_label: La
 	section.add_child(phase_label)
 	pile_box = HBoxContainer.new()
 	pile_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	pile_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pile_box.add_theme_constant_override("separation", 28)
 	section.add_child(pile_box)
 	var controls := UiFactory.make_button_row()
@@ -109,6 +110,11 @@ func _draw_discard() -> void:
 	status_label.text = UiFactory.coach_message(model.last_message, model.guidance_text())
 	_update()
 
+func _draw_discard_at(discard_index: int) -> void:
+	model.draw_discard_at(discard_index)
+	status_label.text = UiFactory.coach_message(model.last_message, model.guidance_text())
+	_update()
+
 func _toggle_card(card: Dictionary) -> void:
 	model.toggle_selected(card)
 	status_label.text = UiFactory.coach_message(_selection_hint(), model.guidance_text())
@@ -152,7 +158,10 @@ func _update() -> void:
 func _build_selected_cards() -> void:
 	if model.selected.is_empty():
 		var label := UiFactory.make_fact_label()
-		label.text = "Choose cards in your hand."
+		if model.has_pickup_requirement():
+			label.text = "Select %s with a meld, or select it alone for a legal layoff." % CardTools.card_text(model.required_pickup_card)
+		else:
+			label.text = "Choose cards in your hand."
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label.custom_minimum_size = Vector2(0, UiFactory.info_font_size() * 2)
@@ -171,6 +180,8 @@ func _build_hand() -> void:
 		if _is_last_drawn_card(card):
 			_style_new_drawn_card(button)
 			button.tooltip_text = "Newly drawn card from the %s." % model.last_draw_source
+			if model.has_pickup_requirement() and card == model.required_pickup_card:
+				button.tooltip_text = "Required discard-pile pickup card. Use it in a meld or layoff before discarding."
 		elif suggested_discard.size() > 0 and card == suggested_discard and not selected:
 			UiFactory.style_suggested_card_button(button)
 			button.tooltip_text = "Coach suggestion: likely discard if you do not meld or lay off."
@@ -214,9 +225,10 @@ func _build_opponent_hand() -> void:
 func _refresh_buttons() -> void:
 	var valid_meld := RummyTools.is_valid_meld(model.selected)
 	var can_layoff := model.selected.size() == 1 and _selected_can_layoff()
-	meld_button.disabled = model.phase != "act" or model.done or not valid_meld
-	layoff_button.disabled = model.phase != "act" or model.done or not can_layoff
-	discard_button.disabled = model.phase != "act" or model.done or model.selected.size() != 1
+	var requirement_satisfied := not model.has_pickup_requirement() or model.selected.has(model.required_pickup_card)
+	meld_button.disabled = model.phase != "act" or model.done or not valid_meld or not requirement_satisfied
+	layoff_button.disabled = model.phase != "act" or model.done or not can_layoff or not requirement_satisfied
+	discard_button.disabled = model.phase != "act" or model.done or model.selected.size() != 1 or model.has_pickup_requirement()
 
 func _selected_can_layoff() -> bool:
 	if model.selected.size() != 1:
@@ -239,6 +251,11 @@ func _make_stock_pile() -> VBoxContainer:
 	return box
 
 func _make_discard_pile() -> VBoxContainer:
+	if model.allow_discard_pile_pickup:
+		return _make_spread_discard_pile()
+	return _make_top_discard_pile()
+
+func _make_top_discard_pile() -> VBoxContainer:
 	var top_text := "Empty" if model.discard.is_empty() else "Take %s" % top_card_text()
 	var box := _make_pile_box("Discard pile", top_text)
 	var texture := UiFactory.make_card_back_texture() if model.discard.is_empty() else UiFactory.make_card_texture(model.discard[-1])
@@ -247,6 +264,44 @@ func _make_discard_pile() -> VBoxContainer:
 	button.tooltip_text = "Take the visible discard card."
 	box.add_child(button)
 	return box
+
+func _make_spread_discard_pile() -> VBoxContainer:
+	var box := _make_pile_box("Discard spread", _discard_spread_subtitle())
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if model.discard.is_empty():
+		var display := UiFactory.make_small_card_display("Empty")
+		display.modulate = Color(1, 1, 1, 0.55)
+		box.add_child(display)
+		return box
+	var row := HFlowContainer.new()
+	row.alignment = FlowContainer.ALIGNMENT_CENTER
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 6)
+	box.add_child(row)
+	for i in range(model.discard.size()):
+		var card: Dictionary = model.discard[i]
+		var button := UiFactory.make_small_card_button(card, _draw_discard_at.bind(i))
+		var can_take := model.can_take_discard_at(i)
+		button.disabled = not can_take
+		if i == model.discard.size() - 1:
+			button.tooltip_text = "Take the top discard card."
+		elif can_take:
+			button.tooltip_text = "Take %s and the %d newer discard%s to its right; %s must be used immediately." % [
+				CardTools.card_text(card),
+				model.discard_pickup_count(i) - 1,
+				"" if model.discard_pickup_count(i) == 2 else "s",
+				CardTools.card_text(card),
+			]
+		else:
+			button.tooltip_text = "You cannot take %s because it has no immediate meld or layoff." % CardTools.card_text(card)
+		row.add_child(button)
+	return box
+
+func _discard_spread_subtitle() -> String:
+	if model.discard.is_empty():
+		return "Empty"
+	return "Oldest left, top card right. Click a usable card."
 
 func _make_pile_box(title: String, subtitle: String) -> VBoxContainer:
 	var box := VBoxContainer.new()
@@ -302,6 +357,8 @@ func _clear_children(parent: Node) -> void:
 		child.queue_free()
 
 func _selection_hint() -> String:
+	if model.has_pickup_requirement() and not model.selected.has(model.required_pickup_card):
+		return "Use %s in your first meld or layoff before discarding." % CardTools.card_text(model.required_pickup_card)
 	if model.selected.is_empty():
 		return "Select cards to meld, lay off, or discard."
 	if RummyTools.is_valid_meld(model.selected):
@@ -315,8 +372,12 @@ func _selection_hint() -> String:
 func _phase_text() -> String:
 	match model.phase:
 		"draw":
-			return "1. Draw: stock or discard"
+			if not model.allow_discard_pile_pickup:
+				return "1. Draw: stock or top discard"
+			return "1. Draw: stock or a usable discard"
 		"act":
+			if model.has_pickup_requirement():
+				return "2. Act: use %s, then discard" % CardTools.card_text(model.required_pickup_card)
 			return "2. Act: meld, lay off, then discard"
 		"bot":
 			return "Computer turn"
@@ -325,18 +386,20 @@ func _phase_text() -> String:
 	return ""
 
 func _facts_text() -> String:
-	return "Players: you + 1 computer\nStock: %d  Discard: %s\nCards: you %d  computer %d" % [
+	var requirement := ""
+	if model.has_pickup_requirement():
+		requirement = "\nMust use: %s" % CardTools.card_text(model.required_pickup_card)
+	return "Players: you + 1 computer\nStock: %d  Discard: %s\nCards: you %d  computer %d%s" % [
 		model.deck.size(),
 		top_card_text(),
 		model.player.size(),
-		model.bot.size()
+		model.bot.size(),
+		requirement
 	]
 
 func _score_text() -> String:
-	return "Match to 500\nYou: %d\nComputer: %d\nHands: %d\n\nThis hand\nYou: %d melded, %d in hand\nComputer: %d melded, %d in hand" % [
-		model.player_score,
-		model.computer_score,
-		model.hands_played,
+	return "%s\n\nThis hand\nYou: %d melded, %d in hand\nComputer: %d melded, %d in hand" % [
+		model.score_text(),
 		model.player_hand_points,
 		RummyTools.hand_points(model.player),
 		model.computer_hand_points,
@@ -344,7 +407,7 @@ func _score_text() -> String:
 	]
 
 func _is_last_drawn_card(card: Dictionary) -> bool:
-	return model.phase == "act" and model.last_drawn_card.size() > 0 and card == model.last_drawn_card
+	return model.is_drawn_card(card)
 
 func _style_new_drawn_card(button: Button) -> void:
 	UiFactory.style_new_card_button(button)
