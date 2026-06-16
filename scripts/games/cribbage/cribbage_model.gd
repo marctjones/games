@@ -5,6 +5,9 @@ const CardTools := preload("res://scripts/core/card_tools.gd")
 const OpponentPolicy := preload("res://scripts/core/opponent_policy.gd")
 const StrategyText := preload("res://scripts/core/strategy_text.gd")
 
+const TARGET_SCORE := 121
+const SKUNK_THRESHOLD := 90
+
 var deck: Array = []
 var player: Array = []
 var bot: Array = []
@@ -18,6 +21,16 @@ var player_score_total := 0
 var computer_score_total := 0
 var hands_played := 0
 var opponent_difficulty := OpponentPolicy.DEFAULT
+var dealer_index := 0
+var current_player_hand_score := 0
+var current_computer_hand_score := 0
+var current_crib_score := 0
+var current_player_pegging_score := 0
+var current_computer_pegging_score := 0
+var crib_owner := ""
+var round_complete := false
+var match_complete := false
+var last_round_summary := "No rounds scored yet."
 
 func set_difficulty(difficulty: String) -> void:
 	opponent_difficulty = OpponentPolicy.normalize(difficulty)
@@ -31,6 +44,15 @@ func new_hand() -> void:
 	selected_discards = []
 	cut_card = {}
 	result_text = ""
+	current_player_hand_score = 0
+	current_computer_hand_score = 0
+	current_crib_score = 0
+	current_player_pegging_score = 0
+	current_computer_pegging_score = 0
+	round_complete = false
+	match_complete = false
+	crib_owner = player_name(dealer_index)
+	last_round_summary = "Dealer: %s. Choose the crib discards for this round." % crib_owner
 	for i in range(player_count - 1):
 		bots.append([])
 	if player_count == 3:
@@ -47,13 +69,15 @@ func new_hand() -> void:
 
 func set_player_count(count: int) -> void:
 	player_count = clamp(count, 2, 4)
+	dealer_index = 0
+	reset_score()
 	new_hand()
 
 func discard_goal() -> int:
 	return 2 if player_count == 2 else 1
 
 func toggle_discard(card: Dictionary) -> void:
-	if cut_card.size() > 0:
+	if round_complete:
 		return
 	if selected_discards.has(card):
 		selected_discards.erase(card)
@@ -61,10 +85,11 @@ func toggle_discard(card: Dictionary) -> void:
 		selected_discards.append(card)
 
 func score_discards() -> String:
-	if cut_card.size() > 0:
+	if round_complete:
 		return result_text
 	if selected_discards.size() != discard_goal():
 		return "Choose exactly %d discard%s." % [discard_goal(), "" if discard_goal() == 1 else "s"]
+	crib_owner = player_name(dealer_index)
 	for card in selected_discards:
 		player.erase(card)
 		crib.append(card)
@@ -74,47 +99,66 @@ func score_discards() -> String:
 			computer.erase(card)
 			crib.append(card)
 	cut_card = CardTools.draw_card(deck)
-	var player_score := score_hand(player, cut_card)
+	var heels_points := 0
+	if str(cut_card.rank) == "J":
+		heels_points = 2
+		_award_points_to_player(dealer_index, heels_points)
+	var pegging := _simulate_round_pegging()
+	current_player_pegging_score = int(pegging["player"])
+	current_computer_pegging_score = int(pegging["computer"])
+	player_score_total += current_player_pegging_score
+	computer_score_total += current_computer_pegging_score
+	current_player_hand_score = score_hand(player, cut_card, false)
+	player_score_total += current_player_hand_score
+	current_computer_hand_score = 0
 	var bot_lines := []
-	var best_computer_score := -1
-	var combined_computer_score := 0
 	for i in range(bots.size()):
-		var bot_score := score_hand(bots[i], cut_card)
-		combined_computer_score += bot_score
-		best_computer_score = max(best_computer_score, bot_score)
+		var bot_score := score_hand(bots[i], cut_card, false)
+		current_computer_hand_score += bot_score
+		computer_score_total += bot_score
 		bot_lines.append("Computer %d kept hand: %s = %d" % [i + 1, CardTools.cards_text(bots[i]), bot_score])
-	var crib_score := score_hand(crib, cut_card)
-	var pegging := simulate_pegging(player, bots[0] if not bots.is_empty() else [])
-	var result := "You win the hand." if player_score > best_computer_score else "Computer wins the hand."
-	if player_score == best_computer_score:
-		result = "The hand is tied."
-	player_score_total += player_score + int(pegging["player"])
-	computer_score_total += combined_computer_score + int(pegging["computer"])
+	current_crib_score = score_hand(crib, cut_card, true)
+	if dealer_index == 0:
+		player_score_total += current_crib_score
+	else:
+		computer_score_total += current_crib_score
+	round_complete = true
 	hands_played += 1
-	result_text = "Cut: %s\nYour kept hand: %s = %d\n%s\nCrib: %s = %d\nPegging drill: you %d, computer %d. %s\n%s" % [
-		CardTools.card_text(cut_card),
-		CardTools.cards_text(player),
-		player_score,
-		CardTools.join_strings(bot_lines, "\n"),
-		CardTools.cards_text(crib),
-		crib_score,
-		int(pegging["player"]),
-		int(pegging["computer"]),
-		str(pegging["log"]),
-		result
-	]
+	match_complete = player_score_total >= TARGET_SCORE or computer_score_total >= TARGET_SCORE
+	last_round_summary = _round_summary_text(heels_points, pegging["log"], bot_lines)
+	result_text = last_round_summary
 	return result_text
+
+func advance_round() -> void:
+	if not round_complete:
+		return
+	dealer_index = (dealer_index + 1) % player_count
+	new_hand()
 
 func reset_score() -> void:
 	player_score_total = 0
 	computer_score_total = 0
 	hands_played = 0
+	current_player_hand_score = 0
+	current_computer_hand_score = 0
+	current_crib_score = 0
+	current_player_pegging_score = 0
+	current_computer_pegging_score = 0
+	round_complete = false
+	match_complete = false
+	last_round_summary = "No rounds scored yet."
 
 func score_text() -> String:
-	return "Score - You: %d  Computer: %d  Hands: %d" % [player_score_total, computer_score_total, hands_played]
+	var match_text := ""
+	if match_complete:
+		match_text = " | Match complete"
+	return "Score to %d - You: %d  Computer: %d  Hands: %d%s" % [TARGET_SCORE, player_score_total, computer_score_total, hands_played, match_text]
 
 func prompt_text() -> String:
-	return "Your hand: %s\nSelected discards: %s\nChoose %d card%s for the crib." % [
+	if round_complete:
+		return last_round_summary
+	return "Dealer: %s\nYour hand: %s\nSelected discards: %s\nChoose %d card%s for the crib." % [
+		crib_owner,
 		CardTools.cards_text(player),
 		CardTools.cards_text(selected_discards),
 		discard_goal(),
@@ -125,27 +169,135 @@ func choose_bot_discards() -> Array:
 	return choose_bot_discards_for(bot, discard_goal())
 
 func suggested_discards() -> Array:
-	if cut_card.size() > 0:
+	if round_complete:
 		return []
 	return choose_bot_discards_for(player, discard_goal())
 
 func guidance_text() -> String:
-	if cut_card.size() > 0:
+	if round_complete:
 		return StrategyText.advice(
-			"Start a new hand.",
-			"Compare the kept-hand score to what the discard heuristic expected before the cut.",
-			"Cribbage discard skill is about average value over many possible cuts, not one lucky cut."
+			"Start the next round.",
+			last_round_summary,
+			"Cribbage decisions should be judged over the full round: pegging, hand score, crib ownership, and match position."
 		)
 	var suggestion := suggested_discards()
 	var kept := _kept_after_discards(player, suggestion)
+	var crib_note := "Protect the opponent crib." if dealer_index != 0 else "Feed your own crib only when the kept hand stays strong."
 	return StrategyText.advice(
 		"Discard %s." % CardTools.cards_text(suggestion),
-		"That keeps an average expected hand value near %.1f before the cut." % _average_cut_score(kept, player),
-		_discard_risk_text(suggestion),
-		"Look for fifteens, pairs, and runs before worrying about single high cards."
+		"That keeps an average expected hand value near %.1f before the cut. Dealer: %s." % [_average_cut_score(kept, player), crib_owner],
+		"%s %s" % [crib_note, _discard_risk_text(suggestion)],
+		"Look for fifteens, pairs, runs, flushes, and a jack for nobs."
 	)
 
-func simulate_pegging(player_cards: Array, computer_cards: Array) -> Dictionary:
+func choose_bot_discards_for(hand: Array, count: int) -> Array:
+	if count == 1:
+		var best_single := [hand[0]]
+		var best_single_score := -99999.0
+		for i in range(hand.size()):
+			var kept_single := []
+			for k in range(hand.size()):
+				if k != i:
+					kept_single.append(hand[k])
+			var discard := [hand[i]]
+			var single_score := _average_cut_score(kept_single, hand) - _crib_risk(discard) * 0.25
+			if single_score > best_single_score:
+				best_single_score = single_score
+				best_single = discard
+		return best_single
+	var best_discards := [hand[0], hand[1]]
+	var best_score := -99999.0
+	for i in range(hand.size()):
+		for j in range(i + 1, hand.size()):
+			var kept := []
+			for k in range(hand.size()):
+				if k != i and k != j:
+					kept.append(hand[k])
+			var discard_pair := [hand[i], hand[j]]
+			var score := _average_cut_score(kept, hand) - _crib_risk(discard_pair) * 0.25
+			if score > best_score:
+				best_score = score
+				best_discards = discard_pair
+	return best_discards
+
+func choose_opponent_discards_for(hand: Array, count: int) -> Array:
+	match OpponentPolicy.normalize(opponent_difficulty):
+		OpponentPolicy.BEGINNER:
+			return _lowest_discards(hand, count)
+		OpponentPolicy.CASUAL:
+			var lowest := _lowest_discards(hand, count)
+			if lowest.size() == count:
+				return lowest
+	return choose_bot_discards_for(hand, count)
+
+func _lowest_discards(hand: Array, count: int) -> Array:
+	var sorted := hand.duplicate()
+	sorted.sort_custom(func(a, b): return CardTools.rank_value(a.rank) < CardTools.rank_value(b.rank))
+	return sorted.slice(0, min(count, sorted.size()))
+
+func _kept_after_discards(hand: Array, discards: Array) -> Array:
+	var kept := []
+	for card in hand:
+		if not discards.has(card):
+			kept.append(card)
+	return kept
+
+func _average_cut_score(kept: Array, unavailable: Array) -> float:
+	var total := 0.0
+	var count := 0
+	for suit in CardTools.SUITS:
+		for rank in CardTools.RANKS:
+			var cut := {"rank": rank, "suit": suit}
+			if unavailable.has(cut):
+				continue
+			total += float(score_hand(kept, cut, false))
+			count += 1
+	if count == 0:
+		return float(score_hand(kept, {}, false))
+	return total / float(count)
+
+func _crib_risk(discards: Array) -> float:
+	var risk := 0.0
+	var values := []
+	var ranks := {}
+	for card in discards:
+		values.append(CardTools.pip_value(card.rank))
+		ranks[card.rank] = int(ranks.get(card.rank, 0)) + 1
+		if card.rank == "5":
+			risk += 5.0
+	for rank in ranks.keys():
+		if int(ranks[rank]) >= 2:
+			risk += 2.0
+	if values.size() >= 2:
+		if int(values[0]) + int(values[1]) == 15:
+			risk += 2.0
+		var rank_gap: int = abs(CardTools.rank_low_value(discards[0].rank) - CardTools.rank_low_value(discards[1].rank))
+		if rank_gap <= 2:
+			risk += 1.5
+	return risk
+
+func _discard_risk_text(discards: Array) -> String:
+	var risk := _crib_risk(discards)
+	if risk >= 5.0:
+		return "Those discards carry strong crib risk, especially 5s, pairs, or connected cards."
+	if risk >= 2.0:
+		return "Moderate crib risk: connected cards, pairs, fifteens, and 5s can feed a crib."
+	return "Low crib risk: these cards are relatively disconnected."
+
+func _simulate_round_pegging() -> Dictionary:
+	if player_count != 2:
+		return _simulate_simple_pegging(player, _combined_bot_cards())
+	var start_player := 0 if dealer_index != 0 else 1
+	return simulate_pegging(player, bot, start_player)
+
+func _combined_bot_cards() -> Array:
+	var cards := []
+	for computer in bots:
+		for card in computer:
+			cards.append(card)
+	return cards
+
+func simulate_pegging(player_cards: Array, computer_cards: Array, start_turn: int = 0) -> Dictionary:
 	var player_remaining := player_cards.duplicate()
 	var computer_remaining := computer_cards.duplicate()
 	player_remaining.sort_custom(func(a, b): return CardTools.pip_value(a.rank) < CardTools.pip_value(b.rank))
@@ -154,25 +306,33 @@ func simulate_pegging(player_cards: Array, computer_cards: Array) -> Dictionary:
 	var sequence := []
 	var player_points := 0
 	var computer_points := 0
-	var turn := 0
-	var passes := 0
+	var turn := start_turn
+	var last_player_to_play := -1
+	var said_go := [false, false]
 	var log_parts := []
 	while not player_remaining.is_empty() or not computer_remaining.is_empty():
 		var hand := player_remaining if turn == 0 else computer_remaining
 		var card := _lowest_legal_pegging_card(hand, running_total)
 		if card.is_empty():
-			passes += 1
-			if passes >= 2:
+			if said_go[turn]:
+				if last_player_to_play >= 0 and running_total > 0 and running_total != 31:
+					if last_player_to_play == 0:
+						player_points += 1
+					else:
+						computer_points += 1
+					log_parts.append("go for 1")
 				running_total = 0
 				sequence = []
-				passes = 0
-				log_parts.append("go/reset")
+				said_go = [false, false]
+			else:
+				said_go[turn] = true
 			turn = 1 - turn
 			continue
-		passes = 0
+		said_go = [false, false]
 		hand.erase(card)
 		running_total += CardTools.pip_value(card.rank)
 		sequence.append(card)
+		last_player_to_play = turn
 		var gained := _pegging_points_for_play(sequence, running_total)
 		if turn == 0:
 			player_points += gained
@@ -183,10 +343,21 @@ func simulate_pegging(player_cards: Array, computer_cards: Array) -> Dictionary:
 		if running_total == 31:
 			running_total = 0
 			sequence = []
+			said_go = [false, false]
+			last_player_to_play = -1
 		turn = 1 - turn
+	if last_player_to_play >= 0 and running_total > 0:
+		if last_player_to_play == 0:
+			player_points += 1
+		else:
+			computer_points += 1
+		log_parts.append("last card for 1")
 	if log_parts.is_empty():
-		log_parts.append("No fifteens, thirty-ones, pairs, or short runs appeared.")
+		log_parts.append("No fifteens, thirty-ones, pairs, or runs appeared.")
 	return {"player": player_points, "computer": computer_points, "log": CardTools.join_strings(log_parts, "; ")}
+
+func _simulate_simple_pegging(player_cards: Array, computer_cards: Array) -> Dictionary:
+	return simulate_pegging(player_cards, computer_cards, 0 if dealer_index != 0 else 1)
 
 func _lowest_legal_pegging_card(cards: Array, running_total: int) -> Dictionary:
 	for card in cards:
@@ -240,103 +411,48 @@ func _pegging_run_points(sequence: Array) -> int:
 			return length
 	return 0
 
-func choose_bot_discards_for(hand: Array, count: int) -> Array:
-	if count == 1:
-		var best_single := [hand[0]]
-		var best_single_score := -99999.0
-		for i in range(hand.size()):
-			var kept_single := []
-			for k in range(hand.size()):
-				if k != i:
-					kept_single.append(hand[k])
-			var discard := [hand[i]]
-			var single_score := _average_cut_score(kept_single, hand) - _crib_risk(discard) * 0.25
-			if single_score > best_single_score:
-				best_single_score = single_score
-				best_single = discard
-		return best_single
-	var best_discards := [hand[0], hand[1]]
-	var best_score := -99999.0
-	for i in range(hand.size()):
-		for j in range(i + 1, hand.size()):
-			var kept := []
-			for k in range(hand.size()):
-				if k != i and k != j:
-					kept.append(hand[k])
-			var discard_pair := [hand[i], hand[j]]
-			var score := _average_cut_score(kept, hand) - _crib_risk(discard_pair) * 0.25
-			if score > best_score:
-				best_score = score
-				best_discards = discard_pair
-	return best_discards
+func _award_points_to_player(position: int, points: int) -> void:
+	if position == 0:
+		player_score_total += points
+	else:
+		computer_score_total += points
 
-func choose_opponent_discards_for(hand: Array, count: int) -> Array:
-	match OpponentPolicy.normalize(opponent_difficulty):
-		OpponentPolicy.BEGINNER:
-			return _lowest_discards(hand, count)
-		OpponentPolicy.CASUAL:
-			var best := choose_bot_discards_for(hand, count)
-			if best.size() > 0:
-				var alternatives := _lowest_discards(hand, count)
-				if alternatives.size() == count:
-					return alternatives
-	return choose_bot_discards_for(hand, count)
+func _round_summary_text(heels_points: int, pegging_log: String, bot_lines: Array) -> String:
+	var crib_line := "Crib owner: %s. Crib %s = %d." % [crib_owner, CardTools.cards_text(crib), current_crib_score]
+	var heels_line := ""
+	if heels_points > 0:
+		heels_line = " His heels: %s scores %d for cutting %s." % [crib_owner, heels_points, CardTools.card_text(cut_card)]
+	var match_line := ""
+	if match_complete:
+		match_line = " %s" % _match_result_text()
+	return "Dealer: %s.%s\nCut: %s\nPegging: you %d, computer %d. %s\nYour kept hand: %s = %d\n%s\n%s\nRound totals - You: %d, Computer: %d.%s" % [
+		crib_owner,
+		heels_line,
+		CardTools.card_text(cut_card),
+		current_player_pegging_score,
+		current_computer_pegging_score,
+		pegging_log,
+		CardTools.cards_text(player),
+		current_player_hand_score,
+		CardTools.join_strings(bot_lines, "\n"),
+		crib_line,
+		player_score_total,
+		computer_score_total,
+		match_line
+	]
 
-func _lowest_discards(hand: Array, count: int) -> Array:
-	var sorted := hand.duplicate()
-	sorted.sort_custom(func(a, b): return CardTools.rank_value(a.rank) < CardTools.rank_value(b.rank))
-	return sorted.slice(0, min(count, sorted.size()))
+func _match_result_text() -> String:
+	var winner: String = "You" if player_score_total >= TARGET_SCORE and player_score_total >= computer_score_total else "Computer"
+	var loser_score: int = min(player_score_total, computer_score_total)
+	var margin_text: String = " Skunk." if loser_score < SKUNK_THRESHOLD else ""
+	return "%s reaches %d first.%s" % [winner, TARGET_SCORE, margin_text]
 
-func _kept_after_discards(hand: Array, discards: Array) -> Array:
-	var kept := []
-	for card in hand:
-		if not discards.has(card):
-			kept.append(card)
-	return kept
+func player_name(position: int) -> String:
+	if position == 0:
+		return "You"
+	return "Computer %d" % position
 
-func _average_cut_score(kept: Array, unavailable: Array) -> float:
-	var total := 0.0
-	var count := 0
-	for suit in CardTools.SUITS:
-		for rank in CardTools.RANKS:
-			var cut := {"rank": rank, "suit": suit}
-			if unavailable.has(cut):
-				continue
-			total += float(score_hand(kept, cut))
-			count += 1
-	if count == 0:
-		return float(score_hand(kept, {}))
-	return total / float(count)
-
-func _crib_risk(discards: Array) -> float:
-	var risk := 0.0
-	var values := []
-	var ranks := {}
-	for card in discards:
-		values.append(CardTools.pip_value(card.rank))
-		ranks[card.rank] = int(ranks.get(card.rank, 0)) + 1
-		if card.rank == "5":
-			risk += 5.0
-	for rank in ranks.keys():
-		if int(ranks[rank]) >= 2:
-			risk += 2.0
-		if values.size() >= 2:
-			if int(values[0]) + int(values[1]) == 15:
-				risk += 2.0
-			var rank_gap: int = abs(CardTools.rank_low_value(discards[0].rank) - CardTools.rank_low_value(discards[1].rank))
-			if rank_gap <= 2:
-				risk += 1.5
-	return risk
-
-func _discard_risk_text(discards: Array) -> String:
-	var risk := _crib_risk(discards)
-	if risk >= 5.0:
-		return "Those discards carry crib risk, so only give them up when the kept hand is clearly stronger."
-	if risk >= 2.0:
-		return "Moderate crib risk: connected cards, pairs, fifteens, and 5s can feed a crib."
-	return "Low crib risk: these cards are relatively disconnected."
-
-static func score_hand(hand: Array, cut_card: Dictionary) -> int:
+static func score_hand(hand: Array, cut_card: Dictionary, is_crib: bool = false) -> int:
 	var cards := hand.duplicate()
 	if cut_card.size() > 0:
 		cards.append(cut_card)
@@ -356,6 +472,8 @@ static func score_hand(hand: Array, cut_card: Dictionary) -> int:
 		elif count == 4:
 			score += 12
 	score += run_points(cards)
+	score += flush_points(hand, cut_card, is_crib)
+	score += nobs_points(hand, cut_card)
 	return score
 
 static func count_fifteens(values: Array, index: int, total: int) -> int:
@@ -385,3 +503,26 @@ static func run_points(cards: Array) -> int:
 			best = length
 			multiplier = local_multiplier
 	return best * multiplier
+
+static func flush_points(hand: Array, cut_card: Dictionary, is_crib: bool) -> int:
+	if hand.is_empty():
+		return 0
+	var suit := str(hand[0].suit)
+	for card in hand:
+		if str(card.suit) != suit:
+			return 0
+	if cut_card.is_empty():
+		return 4
+	if str(cut_card.suit) == suit:
+		return 5
+	if is_crib:
+		return 0
+	return 4
+
+static func nobs_points(hand: Array, cut_card: Dictionary) -> int:
+	if cut_card.is_empty():
+		return 0
+	for card in hand:
+		if str(card.rank) == "J" and str(card.suit) == str(cut_card.suit):
+			return 1
+	return 0

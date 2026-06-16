@@ -20,6 +20,7 @@ var player_count_option: OptionButton
 var reveal_target := -1
 var reveal_option: OptionButton
 var score_button: Button
+var next_round_button: Button
 
 func setup(p_status_label: Label, p_score_label: Label = null, p_rules_label: Label = null) -> void:
 	status_label = p_status_label
@@ -29,7 +30,7 @@ func setup(p_status_label: Label, p_score_label: Label = null, p_rules_label: La
 	model.new_hand()
 	status_label.text = UiFactory.coach_message("Choose the required crib discard%s." % ["" if model.discard_goal() == 1 else "s"], model.guidance_text())
 	if rules_label != null:
-		rules_label.text = "This module focuses on cribbage discard selection, hand scoring, and a simple pegging drill after the cut. Keep cards that make fifteens, pairs, and runs. Be cautious about discarding 5s or connected cards into an opponent crib. Pegging points here cover fifteens, thirty-ones, pairs, and short runs."
+		rules_label.text = "Cribbage: discard to the crib, cut a starter, peg to 31, score each kept hand, then score the crib for the dealer. Dealer rotates each round. This trainer now scores fifteens, pairs, runs, flushes, nobs, his heels, pegging points, crib ownership, and the race to 121."
 	var section := UiFactory.make_section()
 	add_child(section)
 	var setup_row := UiFactory.make_button_row()
@@ -72,13 +73,28 @@ func setup(p_status_label: Label, p_score_label: Label = null, p_rules_label: La
 	section.add_child(controls)
 	score_button = UiFactory.make_action_button("Score Discards", _score_discards)
 	controls.add_child(score_button)
-	controls.add_child(UiFactory.make_secondary_button("New Hand", _restart))
+	next_round_button = UiFactory.make_secondary_button("Next Round", _next_round)
+	controls.add_child(next_round_button)
+	controls.add_child(UiFactory.make_secondary_button("New Match", _restart))
 	_update()
 
 func _restart() -> void:
+	model.dealer_index = 0
+	model.reset_score()
 	model.new_hand()
 	status_label.text = UiFactory.coach_message(
-		"Choose the required crib discard%s, then score the kept hand." % ["" if model.discard_goal() == 1 else "s"],
+		"Choose the required crib discard%s, then score the round." % ["" if model.discard_goal() == 1 else "s"],
+		model.guidance_text()
+	)
+	_update()
+
+func _next_round() -> void:
+	if not model.round_complete:
+		status_label.text = "Finish scoring the current round first."
+		return
+	model.advance_round()
+	status_label.text = UiFactory.coach_message(
+		"New round. Dealer: %s. Choose the crib discard%s." % [model.crib_owner, "" if model.discard_goal() == 1 else "s"],
 		model.guidance_text()
 	)
 	_update()
@@ -91,7 +107,7 @@ func _player_count_selected(index: int) -> void:
 	model.set_player_count(index + 2)
 	reveal_target = -1
 	_populate_reveal_options()
-	status_label.text = "Player count changed. Score reset for the new cribbage table."
+	status_label.text = "Player count changed. Match reset for the new cribbage table."
 	_update()
 
 func _reveal_option_selected(index: int) -> void:
@@ -125,8 +141,8 @@ func _score_discards() -> void:
 		return
 	result_label.text = result
 	status_label.text = UiFactory.coach_message(
-		"Cribbage hand scored.",
-		"Review whether the discard protected fifteens, pairs, and runs while limiting crib risk."
+		"Cribbage round scored.",
+		"Review the discard, pegging, hand score, and crib ownership together before starting the next round."
 	)
 	_update()
 
@@ -143,13 +159,21 @@ func _update() -> void:
 		model.score_text()
 	]
 	if score_label != null:
-		score_label.text = "%s\nPlayers: %d\nComputer opponents: %d\nDiscards needed: %d" % [
+		score_label.text = "%s\nDealer: %s\nCrib owner: %s\nPlayers: %d\nComputer opponents: %d\nDiscards needed: %d\nRound: you hand %d, computer hands %d, crib %d, pegging you %d / computer %d" % [
 			model.score_text(),
+			model.player_name(model.dealer_index),
+			model.crib_owner,
 			model.player_count,
 			model.player_count - 1,
-			model.discard_goal()
+			model.discard_goal(),
+			model.current_player_hand_score,
+			model.current_computer_hand_score,
+			model.current_crib_score,
+			model.current_player_pegging_score,
+			model.current_computer_pegging_score
 		]
-	score_button.disabled = model.cut_card.size() > 0 or model.selected_discards.size() != model.discard_goal()
+	score_button.disabled = model.round_complete or model.selected_discards.size() != model.discard_goal()
+	next_round_button.disabled = not model.round_complete
 	hand_scroll.custom_minimum_size = Vector2(0, UiFactory.hand_scroll_height(6))
 	opponent_scroll.custom_minimum_size = Vector2(0, UiFactory.small_hand_scroll_height() + 48)
 	table_box.add_child(_make_crib_board())
@@ -157,7 +181,7 @@ func _update() -> void:
 		table_box.add_child(UiFactory.make_card_display("", false, false, model.cut_card))
 	else:
 		table_box.add_child(UiFactory.make_card_display("Cut", false, true))
-	table_box.add_child(UiFactory.make_card_display("Crib", false, true))
+	table_box.add_child(_make_crib_display())
 	for i in range(model.bots.size()):
 		opponent_box.add_child(_make_opponent_hand(i))
 	for card in model.player:
@@ -167,9 +191,9 @@ func _update() -> void:
 			button.tooltip_text = "Coach suggestion: consider discarding this card."
 		elif model.selected_discards.has(card):
 			button.tooltip_text = "Selected for the crib."
-		button.disabled = model.cut_card.size() > 0
+		button.disabled = model.round_complete
 		hand_box.add_child(button)
-	if model.cut_card.is_empty():
+	if not model.round_complete:
 		result_label.text = model.prompt_text()
 
 func _make_opponent_hand(index: int) -> PanelContainer:
@@ -183,7 +207,7 @@ func _make_opponent_hand(index: int) -> PanelContainer:
 	panel.add_child(box)
 	var label := Label.new()
 	var score_text := ""
-	if model.cut_card.size() > 0:
+	if model.round_complete:
 		score_text = " = %d" % CribbageModel.score_hand(model.bots[index], model.cut_card)
 	elif _show_opponent_hand(index):
 		score_text = " - raw %d before cut" % CribbageModel.score_hand(model.bots[index], {})
@@ -206,7 +230,7 @@ func _make_opponent_hand(index: int) -> PanelContainer:
 	return panel
 
 func _show_opponent_hand(index: int) -> bool:
-	return model.cut_card.size() > 0 or reveal_target == -2 or reveal_target == index
+	return model.round_complete or reveal_target == -2 or reveal_target == index
 
 func _make_crib_board() -> PanelContainer:
 	var panel := UiFactory.make_panel()
@@ -222,4 +246,26 @@ func _make_crib_board() -> PanelContainer:
 		peg.custom_minimum_size = Vector2(10, 10)
 		peg.color = Color("#7b5732") if i % 2 == 0 else Color("#c8bfae")
 		grid.add_child(peg)
+	return panel
+
+func _make_crib_display() -> PanelContainer:
+	if not model.round_complete:
+		return UiFactory.make_card_display("Crib", false, true)
+	var panel := UiFactory.make_panel()
+	panel.custom_minimum_size = Vector2(220, UiFactory.small_card_control_size().y + 74)
+	panel.add_theme_stylebox_override("panel", UiFactory.panel_style(Color("#f4f7f8"), 7, Color("#c8bfae"), 1))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	panel.add_child(box)
+	var label := Label.new()
+	label.text = "Crib (%s) = %d" % [model.crib_owner, model.current_crib_score]
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_color_override("font_color", Color("#17212b"))
+	box.add_child(label)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	box.add_child(row)
+	for card in model.crib:
+		row.add_child(UiFactory.make_small_card_display("", CardTools.is_red_suit(card.suit), false, card))
 	return panel

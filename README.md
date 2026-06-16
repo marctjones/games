@@ -6,7 +6,7 @@ Godot 4 prototype for learning classic multiplayer card and board games as one h
 
 - Hearts: one human player against three computer opponents, automatic pass direction, trick scoring, and match score tracking.
 - Blackjack: one human player against a rule-controlled dealer, with optional computer seats, split/double actions, and table score tracking.
-- Cribbage: 2-4 player discard-selection trainer with basic computer opponents, hand scoring, crib scoring, and a simplified pegging drill.
+- Cribbage: 2-4 player round-flow trainer with dealer rotation, crib ownership, discard selection, cut / his-heels handling, pegging simulation, hand and crib scoring, and race-to-121 tracking.
 - Gin Rummy: one human player against a basic deadwood-reduction bot, with knock/gin flow, defender layoffs, gin and undercut bonuses, and 100-point match score tracking.
 - Rummy 500: one human player against a basic computer opponent, with stock draw, visible discard-spread pickup, forced use of lower discard pickups, melds, layoffs, discard-to-end-turn flow, and hand scoring toward 500.
 - Klondike Solitaire: one-player tableau/foundation trainer with stock/waste draw, legal tableau moves, foundation moves, and move hints.
@@ -46,7 +46,7 @@ No catalog entries are currently placeholders. The former queued entries now rou
 
 ## Remaining roadmap
 
-1. Continue making priority card games rules-complete: Cribbage full round flow, trick-taking bidding/contracts, poker betting, blackjack table-rule options, Rummy 500 variants, and remaining edge cases.
+1. Continue making priority card games rules-complete: trick-taking bidding/contracts, poker betting, blackjack table-rule options, deeper cribbage pegging / multiplayer detail, Rummy 500 variants, and remaining edge cases.
 2. Replace trainer-grade board games with full rules engines: chess check/checkmate/castling/en passant/promotion, Go ko/suicide/territory scoring, backgammon dice/bar/bearing-off/doubling, Nine Men's Morris mill captures/flying, and full Ludo/Pachisi race rules.
 3. Improve AI quality without hidden information: deeper heuristics first, then search/simulation where appropriate.
 4. Build the learning system: mistake review, hand/trick replay, drills, spaced repetition, progress tracking, and richer explanations.
@@ -70,6 +70,7 @@ Validation helpers:
 
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/tools/verify_card_assets.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/tools/verify_cribbage.gd
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/tools/verify_playable_views.gd
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/tools/verify_gin_rummy_discard.gd
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://scripts/tools/verify_rummy_500.gd
@@ -98,6 +99,7 @@ Validation helpers:
 - `scripts/ui/ui_factory.gd`: shared panel, menu button, action button, Learning Coach sections, responsive game-selection tile/card/board sizing, recommended/new-card styling, and Kenney/generated card texture loading.
 - `scripts/tools/generate_assets.gd`: generates PNG card/checker assets under `assets/generated/`.
 - `scripts/tools/verify_card_assets.gd`: verifies the Kenney card texture path.
+- `scripts/tools/verify_cribbage.gd`: verifies cribbage hand scoring details, crib ownership, heels scoring, and dealer rotation.
 - `scripts/tools/verify_playable_views.gd`: smoke-tests playable view construction, coach text, and resize refresh paths.
 - `scripts/tools/verify_rummy_500.gd`: verifies shared rummy meld handling and a Rummy 500 hand flow.
 - `scripts/tools/verify_priority_card_games.gd`: verifies Klondike setup, Texas Hold'em stage flow, seven-card poker evaluation, Basic Rummy scoring, Canasta meld scoring, Pinochle setup, and trick-taking mode setup.
@@ -105,4 +107,4 @@ Validation helpers:
 - `scripts/tools/verify_queued_trainers.gd`: verifies that formerly queued trainer modules are playable and expose legal moves or legal cards.
 - `scripts/tools/verify_opponent_policy.gd`: verifies the difficulty policy, legal move selection, and no hidden-stock peeking in rummy bots.
 
-Recent roadmap work moved Gin Rummy deadwood/meld optimization onto the shared `RummyTools` path, added real knock/gin/layoff/undercut scoring, added Rummy 500 discard-spread pickup with forced lower-card use, added post-hand review text, added the shared opponent difficulty/fair-play policy, removed rummy hidden-stock peeking, and deepened first-rule layers for Hearts passing, Cribbage pegging drills, Blackjack double/split actions, Spades bids/bags, Euchre bowers/maker scoring, Bridge auto-contracts, Pinochle meld/bid scoring, and Canasta wild/red-three/frozen-discard rules. The next architecture step is to replace the remaining first-pass trainer approximations with fuller rules engines one game at a time.
+Recent roadmap work moved Gin Rummy deadwood/meld optimization onto the shared `RummyTools` path, added real knock/gin/layoff/undercut scoring, added Rummy 500 discard-spread pickup with forced lower-card use, upgraded Cribbage from discard-only drill to round-flow scoring with dealer rotation and crib ownership, added post-hand review text, added the shared opponent difficulty/fair-play policy, removed rummy hidden-stock peeking, and deepened first-rule layers for Hearts passing, Blackjack double/split actions, Spades bids/bags, Euchre bowers/maker scoring, Bridge auto-contracts, Pinochle meld/bid scoring, and Canasta wild/red-three/frozen-discard rules. The next architecture step is to replace the remaining first-pass trainer approximations with fuller rules engines one game at a time.
