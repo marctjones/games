@@ -80,6 +80,21 @@ func _verify_trick_taking_modes() -> void:
 		_assert(not legal.is_empty(), "%s should have legal player cards" % mode)
 		var suggestion := model.suggest_player_card()
 		_assert(suggestion.size() > 0, "%s should provide a suggested player card" % mode)
+		if mode == "spades":
+			_assert(model.is_waiting_for_player_contract(), "Spades should pause for a visible South bid")
+			var labels := model.contract_option_labels()
+			_assert(not labels.is_empty(), "Spades should offer bid options")
+			model.select_contract_option(0)
+			model.confirm_contract_selection()
+			_assert(not model.is_waiting_for_player_contract(), "Spades should enter play after confirming the bid")
+			_assert(model.team_bids[0] >= 2, "Spades team bid should include South and North bids")
+		elif mode == "bridge" and model.contract_team == 0:
+			_assert(model.is_waiting_for_player_contract(), "Bridge should pause for a visible contract choice when You/North are favorites")
+			var options := model.contract_option_labels()
+			_assert(not options.is_empty(), "Bridge should offer contract options")
+			model.select_contract_option(0)
+			model.confirm_contract_selection()
+			_assert(not model.is_waiting_for_player_contract(), "Bridge should enter play after confirming the contract")
 
 func _verify_pinochle_setup() -> void:
 	var model := PinochleModel.new()

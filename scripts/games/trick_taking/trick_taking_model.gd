@@ -30,6 +30,10 @@ var contract_team := 0
 var contract_level := 1
 var contract_suit := ""
 var opponent_difficulty := OpponentPolicy.DEFAULT
+var round_phase := "play"
+var individual_bids := [0, 0, 0, 0]
+var contract_options: Array = []
+var selected_contract_option := 0
 
 func set_difficulty(difficulty: String) -> void:
 	opponent_difficulty = OpponentPolicy.normalize(difficulty)
@@ -51,12 +55,19 @@ func new_round(p_mode: String) -> void:
 	round_over = false
 	leader = 0
 	turn = 0
+	round_phase = "play"
+	contract_options = []
+	selected_contract_option = 0
+	individual_bids = [0, 0, 0, 0]
 	for i in range(hand_size * 4):
 		hands[i % 4].append(deck[i])
 	for hand in hands:
 		hand.sort_custom(CardTools.sort_cards)
 	_setup_contracts_after_deal()
-	last_message = "New %s hand. You are South with North as partner." % title
+	if is_waiting_for_player_contract():
+		last_message = "New %s hand. Choose the contract before the opening lead." % title
+	else:
+		last_message = "New %s hand. You are South with North as partner." % title
 
 func _make_mode_deck(ranks: Array) -> Array:
 	var cards := []
@@ -82,7 +93,7 @@ func _config_for(p_mode: String) -> Dictionary:
 				"ranks": CardTools.RANKS,
 				"hand_size": 13,
 				"trump": "",
-				"rules": "Bridge trainer: four players in two partnerships with a simplified auto-contract from high-card points. Follow suit and practice trick-reading, entries, and preserving high cards."
+				"rules": "Bridge trainer: four players in two partnerships with simplified contract suggestions from high-card points and suit fit. When You/North are favored, choose a contract before play begins. Follow suit and practice trick-reading, entries, and preserving high cards."
 			}
 		"whist":
 			return {
@@ -98,7 +109,7 @@ func _config_for(p_mode: String) -> Dictionary:
 				"ranks": CardTools.RANKS,
 				"hand_size": 13,
 				"trump": "S",
-				"rules": "Spades trainer: four players in partnerships, spades are trump, follow suit when possible, and each team receives an automatic estimated bid. Overtricks count as bags; ten bags trigger a penalty."
+				"rules": "Spades trainer: four players in partnerships, spades are trump, follow suit when possible, and South chooses a visible bid after the other three seats estimate theirs. Overtricks count as bags; ten bags trigger a penalty."
 			}
 
 func legal_cards(player: int) -> Array:
@@ -113,7 +124,7 @@ func legal_cards(player: int) -> Array:
 	return matching if not matching.is_empty() else hand.duplicate()
 
 func play_player_card(card: Dictionary) -> String:
-	if round_over or turn != 0:
+	if round_over or round_phase != "play" or turn != 0:
 		return ""
 	if not legal_cards(0).has(card):
 		return "You must follow suit if you can."
@@ -122,6 +133,8 @@ func play_player_card(card: Dictionary) -> String:
 	return ""
 
 func advance_bots() -> void:
+	if round_phase != "play":
+		return
 	while turn != 0 and not round_over:
 		play_card(turn, pick_bot_card(turn))
 
@@ -267,6 +280,20 @@ func current_winning_player(lead_suit: String) -> int:
 	return winner
 
 func guidance_text() -> String:
+	if is_waiting_for_player_contract():
+		match mode:
+			"spades":
+				return StrategyText.advice(
+					"Choose South's bid.",
+					"North, West, and East already estimated their bids. Set a realistic team target that matches your spade length and outside winners.",
+					"Bidding too high creates set risk; bidding too low turns winners into bags."
+				)
+			"bridge":
+				return StrategyText.advice(
+					"Choose a contract for You/North.",
+					"The options are derived from combined high-card points and long-suit fit. Pick the smallest contract you expect to make consistently.",
+					"A safer partscore teaches suit establishment; a higher contract tests whether the hand has enough entries and control."
+				)
 	if round_over:
 		return StrategyText.advice(
 			"Start another hand.",
@@ -313,6 +340,12 @@ func guidance_text() -> String:
 	)
 
 func status_text() -> String:
+	if is_waiting_for_player_contract():
+		match mode:
+			"spades":
+				return "Bid before play starts."
+			"bridge":
+				return "Choose the contract before the opening lead."
 	if round_over:
 		return last_message
 	return "Your turn." if turn == 0 else "%s is playing." % player_name(turn)
@@ -356,6 +389,38 @@ func reset_score() -> void:
 	team_bags = [0, 0]
 	rounds_played = 0
 
+func is_waiting_for_player_contract() -> bool:
+	return round_phase == "contract"
+
+func contract_option_labels() -> Array:
+	var labels := []
+	for option in contract_options:
+		labels.append(str(option.get("label", "")))
+	return labels
+
+func select_contract_option(index: int) -> void:
+	selected_contract_option = clamp(index, 0, max(0, contract_options.size() - 1))
+
+func confirm_contract_selection() -> String:
+	if not is_waiting_for_player_contract() or contract_options.is_empty():
+		return ""
+	var option: Dictionary = contract_options[selected_contract_option]
+	match mode:
+		"spades":
+			individual_bids[0] = int(option["bid"])
+			team_bids[0] = int(individual_bids[0]) + int(individual_bids[2])
+			round_phase = "play"
+			last_message = "South bids %d. Team target is now %d tricks." % [individual_bids[0], team_bids[0]]
+		"bridge":
+			contract_team = 0
+			contract_level = int(option["level"])
+			contract_suit = str(option["suit"])
+			round_phase = "play"
+			last_message = "You/North choose %d%s." % [contract_level, contract_suit]
+		_:
+			round_phase = "play"
+	return last_message
+
 func effective_suit(card: Dictionary) -> String:
 	if mode == "euchre" and _is_left_bower(card):
 		return trump_suit
@@ -363,6 +428,7 @@ func effective_suit(card: Dictionary) -> String:
 
 func _setup_contracts_after_deal() -> void:
 	team_bids = [0, 0]
+	individual_bids = [0, 0, 0, 0]
 	maker_team = 0
 	alone_player = -1
 	contract_team = 0
@@ -370,7 +436,12 @@ func _setup_contracts_after_deal() -> void:
 	contract_suit = trump_suit
 	match mode:
 		"spades":
-			team_bids = [_estimate_spades_bid(0) + _estimate_spades_bid(2), _estimate_spades_bid(1) + _estimate_spades_bid(3)]
+			for player in range(1, 4):
+				individual_bids[player] = _estimate_spades_bid(player)
+			team_bids[1] = int(individual_bids[1]) + int(individual_bids[3])
+			contract_options = _spades_bid_options()
+			selected_contract_option = _recommended_spades_option_index()
+			round_phase = "contract"
 		"euchre":
 			var best_player := 0
 			var best_strength := -1
@@ -381,11 +452,20 @@ func _setup_contracts_after_deal() -> void:
 					best_player = player
 			maker_team = team_for(best_player)
 			alone_player = best_player if best_strength >= 5 else -1
+			round_phase = "play"
 		"bridge":
 			var team_hcp := [_high_card_points(0) + _high_card_points(2), _high_card_points(1) + _high_card_points(3)]
 			contract_team = 0 if int(team_hcp[0]) >= int(team_hcp[1]) else 1
 			contract_level = clamp(int(floor(float(team_hcp[contract_team]) / 3.5)) - 5, 1, 7)
 			contract_suit = _longest_team_suit(contract_team)
+			if contract_team == 0:
+				contract_options = _bridge_contract_options(team_hcp[0])
+				selected_contract_option = _recommended_bridge_option_index()
+				round_phase = "contract"
+			else:
+				round_phase = "play"
+		_:
+			round_phase = "play"
 
 func _score_spades_round() -> void:
 	for team in range(2):
@@ -471,13 +551,63 @@ func _longest_team_suit(team: int) -> String:
 func _contract_text() -> String:
 	match mode:
 		"spades":
+			if is_waiting_for_player_contract():
+				return "Bids South ?, North %d, West %d, East %d" % [individual_bids[2], individual_bids[1], individual_bids[3]]
 			return "Bids You/North %d, West/East %d | Bags %d-%d" % [team_bids[0], team_bids[1], team_bags[0], team_bags[1]]
 		"euchre":
 			var alone := " alone by %s" % player_name(alone_player) if alone_player >= 0 else ""
 			return "Maker: %s%s" % ["You/North" if maker_team == 0 else "West/East", alone]
 		"bridge":
+			if is_waiting_for_player_contract():
+				return "Auction favorite: You/North | choose a contract"
 			return "Contract: %s %d%s" % ["You/North" if contract_team == 0 else "West/East", contract_level, contract_suit]
 	return "Trick points"
+
+func _spades_bid_options() -> Array:
+	var recommended: int = _estimate_spades_bid(0)
+	var min_bid: int = max(1, recommended - 1)
+	var max_bid: int = min(7, recommended + 2)
+	var options := []
+	for bid in range(min_bid, max_bid + 1):
+		options.append({
+			"label": "Bid %d" % bid,
+			"bid": bid,
+		})
+	return options
+
+func _recommended_spades_option_index() -> int:
+	var recommended := _estimate_spades_bid(0)
+	for i in range(contract_options.size()):
+		if int(contract_options[i]["bid"]) == recommended:
+			return i
+	return 0
+
+func _bridge_contract_options(team_hcp: int) -> Array:
+	var suit: String = _longest_team_suit(0)
+	var base_level: int = clamp(int(floor(float(team_hcp) / 3.5)) - 5, 1, 7)
+	var options := []
+	var seen := {}
+	for choice in [
+		{"level": max(1, base_level - 1), "suit": suit},
+		{"level": base_level, "suit": "NT" if team_hcp >= 25 else suit},
+		{"level": min(7, base_level + 1), "suit": suit},
+	]:
+		var key := "%d%s" % [int(choice["level"]), str(choice["suit"])]
+		if seen.has(key):
+			continue
+		seen[key] = true
+		options.append({
+			"label": "%d%s" % [int(choice["level"]), str(choice["suit"])],
+			"level": int(choice["level"]),
+			"suit": str(choice["suit"]),
+		})
+	return options
+
+func _recommended_bridge_option_index() -> int:
+	for i in range(contract_options.size()):
+		if str(contract_options[i]["suit"]) == contract_suit and int(contract_options[i]["level"]) == contract_level:
+			return i
+	return 0
 
 func _is_right_bower(card: Dictionary) -> bool:
 	return mode == "euchre" and card.rank == "J" and card.suit == trump_suit

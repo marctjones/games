@@ -14,8 +14,8 @@ Godot 4 prototype for learning classic multiplayer card and board games as one h
 - Texas Hold'em: simplified cash-game trainer with one human player, one to five computer seats, community-card stages, fold/check-call decisions, dollar bankrolls, and seven-card showdown evaluation.
 - Basic Rummy: one human player against a basic computer opponent, sharing the rummy meld/layoff workflow with simpler go-out scoring.
 - Euchre: four-player partnership trick-taking trainer with a 24-card deck, random trump, bowers, follow-suit play, hidden/revealed opponent hands, and maker-team scoring.
-- Spades: four-player partnership trick-taking trainer with spades as trump, automatic estimated bids, bags, follow-suit play, hidden/revealed opponent hands, and team scoring.
-- Bridge Trainer: four-player partnership trick-taking trainer with simplified high-card-point auto-contracts, suit following, and hand-reading practice.
+- Spades: four-player partnership trick-taking trainer with spades as trump, visible South bidding after the other three seats estimate theirs, bags, follow-suit play, hidden/revealed opponent hands, and team scoring.
+- Bridge Trainer: four-player partnership trick-taking trainer with simplified high-card-point contract suggestions, a visible You/North contract choice when that side is favored, suit following, and hand-reading practice.
 - Pinochle: four-player partnership trick-taking trainer with a 48-card double deck, random trump, point-card trick scoring, simplified meld/bid scoring, hidden/revealed opponent hands, and coach card suggestions.
 - Whist: four-player partnership trick-taking trainer with full-deck follow-suit play, hidden/revealed opponent hands, and team trick scoring.
 - Canasta: one human player against a basic computer opponent with two-deck draw/discard flow, same-rank melds, seven-card canasta bonuses, automatic hand scoring, and revealable opponent hand.
@@ -92,7 +92,7 @@ Validation helpers:
 - `scripts/games/*/*_view.gd`: game-specific Godot controls and interaction wiring.
 - `scripts/games/poker/poker_evaluator.gd`: reusable poker hand evaluator for Five-Card Draw and Texas Hold'em.
 - `scripts/games/rummy/rummy_tools.gd`: reusable rummy-family meld, layoff, deadwood, and discard helpers.
-- `scripts/games/trick_taking/trick_taking_model.gd` and `scripts/games/trick_taking/trick_taking_view.gd`: reusable partnership trick-taking prototype engine/view used by Euchre, Spades, Bridge Trainer, and Whist.
+- `scripts/games/trick_taking/trick_taking_model.gd` and `scripts/games/trick_taking/trick_taking_view.gd`: reusable partnership trick-taking prototype engine/view used by Euchre, Spades, Bridge Trainer, and Whist, including shared contract-phase UI hooks.
 - `scripts/games/queued_trainer/queued_trainer_model.gd` and `scripts/games/queued_trainer/queued_trainer_view.gd`: reusable first-pass trainer modules for the formerly queued historic card and board games.
 - `scripts/games/tic_tac_toe/tic_tac_toe_model.gd`: Tic-tac-toe board state, win detection, and basic AI.
 - `scripts/core/strategy_text.gd`: shared structured coaching and post-hand review text.
@@ -107,4 +107,4 @@ Validation helpers:
 - `scripts/tools/verify_queued_trainers.gd`: verifies that formerly queued trainer modules are playable and expose legal moves or legal cards.
 - `scripts/tools/verify_opponent_policy.gd`: verifies the difficulty policy, legal move selection, and no hidden-stock peeking in rummy bots.
 
-Recent roadmap work moved Gin Rummy deadwood/meld optimization onto the shared `RummyTools` path, added real knock/gin/layoff/undercut scoring, added Rummy 500 discard-spread pickup with forced lower-card use, upgraded Cribbage from discard-only drill to round-flow scoring with dealer rotation and crib ownership, added post-hand review text, added the shared opponent difficulty/fair-play policy, removed rummy hidden-stock peeking, and deepened first-rule layers for Hearts passing, Blackjack double/split actions, Spades bids/bags, Euchre bowers/maker scoring, Bridge auto-contracts, Pinochle meld/bid scoring, and Canasta wild/red-three/frozen-discard rules. The next architecture step is to replace the remaining first-pass trainer approximations with fuller rules engines one game at a time.
+Recent roadmap work moved Gin Rummy deadwood/meld optimization onto the shared `RummyTools` path, added real knock/gin/layoff/undercut scoring, added Rummy 500 discard-spread pickup with forced lower-card use, upgraded Cribbage from discard-only drill to round-flow scoring with dealer rotation and crib ownership, added post-hand review text, added the shared opponent difficulty/fair-play policy, removed rummy hidden-stock peeking, and deepened first-rule layers for Hearts passing, Blackjack double/split actions, visible Spades bidding, visible Bridge contract selection when You/North are favored, Euchre bowers/maker scoring, Pinochle meld/bid scoring, and Canasta wild/red-three/frozen-discard rules. The next architecture step is to replace the remaining first-pass trainer approximations with fuller rules engines one game at a time.

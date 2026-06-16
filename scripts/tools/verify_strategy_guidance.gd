@@ -90,6 +90,9 @@ func _verify_texas_holdem_draw_guidance() -> void:
 func _verify_trick_taking_partner_guidance() -> void:
 	var model := TrickTakingModel.new()
 	model.new_round("spades")
+	_assert_structured(model.guidance_text(), "Spades bidding guidance")
+	model.select_contract_option(0)
+	model.confirm_contract_selection()
 	model.hands[0] = [_card("2", "H"), _card("K", "H")]
 	model.current_trick = [
 		{"player": 2, "card": _card("Q", "H")},
@@ -99,6 +102,11 @@ func _verify_trick_taking_partner_guidance() -> void:
 	var suggestion := model.suggest_player_card()
 	_assert(suggestion == _card("2", "H"), "Trick-taking should avoid overtaking partner when possible")
 	_assert_structured(model.guidance_text(), "Trick-taking guidance")
+
+	var bridge := TrickTakingModel.new()
+	bridge.new_round("bridge")
+	if bridge.is_waiting_for_player_contract():
+		_assert_structured(bridge.guidance_text(), "Bridge contract guidance")
 
 	var pinochle := PinochleModel.new()
 	pinochle.new_round("pinochle")

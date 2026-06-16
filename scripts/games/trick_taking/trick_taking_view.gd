@@ -18,6 +18,9 @@ var hand_scroll: ScrollContainer
 var hand_box: Container
 var reveal_option: OptionButton
 var reveal_target := 0
+var contract_row: HBoxContainer
+var contract_option: OptionButton
+var contract_confirm_button: Button
 
 func game_mode() -> String:
 	return mode
@@ -45,6 +48,18 @@ func setup(p_status_label: Label, p_score_label: Label = null, p_rules_label: La
 	opponent_box = VBoxContainer.new()
 	opponent_box.add_theme_constant_override("separation", 8)
 	section.add_child(opponent_box)
+	contract_row = UiFactory.make_button_row()
+	var contract_label := Label.new()
+	contract_label.text = "Contract"
+	contract_label.add_theme_color_override("font_color", Color("#25313a"))
+	contract_row.add_child(contract_label)
+	contract_option = OptionButton.new()
+	UiFactory.style_option_button(contract_option)
+	contract_option.item_selected.connect(_contract_option_selected)
+	contract_row.add_child(contract_option)
+	contract_confirm_button = UiFactory.make_action_button("Confirm", _confirm_contract_choice)
+	contract_row.add_child(contract_confirm_button)
+	section.add_child(contract_row)
 	var hand := UiFactory.make_hand_scroll()
 	hand_scroll = hand["scroll"]
 	hand_box = hand["row"]
@@ -83,6 +98,16 @@ func _card_pressed(card: Dictionary) -> void:
 		return
 	_update()
 
+func _contract_option_selected(index: int) -> void:
+	model.select_contract_option(index)
+	status_label.text = UiFactory.coach_message(model.status_text(), model.guidance_text())
+
+func _confirm_contract_choice() -> void:
+	var message := model.confirm_contract_selection()
+	status_label.text = UiFactory.coach_message(message if message != "" else model.status_text(), model.guidance_text())
+	model.advance_bots()
+	_update()
+
 func _update() -> void:
 	_clear_children(hand_box)
 	_clear_children(table_grid)
@@ -91,11 +116,12 @@ func _update() -> void:
 	facts_label.text = "Valid players: 4 | Computer opponents: 3 | Team game\n%s" % model.score_text()
 	if score_label != null:
 		score_label.text = "%s\nTurn: %s" % [model.score_text(), TrickTakingModel.player_name(model.turn)]
+	_refresh_contract_controls()
 	hand_scroll.custom_minimum_size = Vector2(0, UiFactory.hand_scroll_height(model.hand_size))
 	_build_table()
 	_build_opponent_hands()
 	status_label.text = UiFactory.coach_message(model.status_text(), model.guidance_text())
-	if model.round_over:
+	if model.round_over or model.is_waiting_for_player_contract():
 		return
 	var legal := model.legal_cards(0)
 	var suggested := model.suggest_player_card() if model.turn == 0 else {}
@@ -106,6 +132,19 @@ func _update() -> void:
 			UiFactory.style_suggested_card_button(button)
 			button.tooltip_text = "Coach suggestion: play this card."
 		hand_box.add_child(button)
+
+func _refresh_contract_controls() -> void:
+	if contract_row == null or contract_option == null or contract_confirm_button == null:
+		return
+	var waiting := model.is_waiting_for_player_contract()
+	contract_row.visible = waiting
+	if not waiting:
+		return
+	contract_option.clear()
+	for i in range(model.contract_option_labels().size()):
+		contract_option.add_item(str(model.contract_option_labels()[i]), i)
+	contract_option.select(model.selected_contract_option)
+	contract_confirm_button.disabled = contract_option.item_count == 0
 
 func _build_table() -> void:
 	table_grid.add_child(_seat_label(""))
