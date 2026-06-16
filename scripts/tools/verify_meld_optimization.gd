@@ -13,6 +13,7 @@ func _run() -> void:
 	_verify_gin_prefers_two_melds_over_longer_overlap()
 	_verify_rummy_prefers_two_melds_over_longer_overlap()
 	_verify_long_run_is_kept_when_it_is_best()
+	_verify_rummy_layoff_optimizer()
 	print("Meld optimization verification passed.")
 	quit()
 
@@ -76,6 +77,16 @@ func _verify_long_run_is_kept_when_it_is_best() -> void:
 	_assert_no_duplicate_cards(rummy_groups, "Rummy long run")
 	_assert(_has_group(rummy_groups, ["2H", "3H", "4H", "5H", "6H"]), "Rummy should keep the full five-card run when no split is better")
 	_assert(RummyTools.deadwood_score(hand) == 10, "Rummy long run hand should leave only KC deadwood")
+
+func _verify_rummy_layoff_optimizer() -> void:
+	var defender := [
+		_card("K", "S"), _card("K", "H"), _card("K", "D"),
+		_card("7", "H"), _card("2", "D"),
+	]
+	var target_melds := [[_card("4", "H"), _card("5", "H"), _card("6", "H")]]
+	var result := RummyTools.best_deadwood_after_layoff(defender, target_melds)
+	_assert(int(result["deadwood"]) == 2, "Layoff optimizer should reduce defender deadwood to 2")
+	_assert(_has_group([result["laid_off"]], ["7H"]), "Layoff optimizer should lay off 7H onto 4H-5H-6H")
 
 func _gin_groups_to_cards(hand: Array, groups: Array) -> Array:
 	var card_groups := []

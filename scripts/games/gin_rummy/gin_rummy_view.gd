@@ -28,7 +28,7 @@ func setup(p_status_label: Label, p_score_label: Label = null, p_rules_label: La
 	model.new_hand()
 	status_label.text = model.last_message
 	if rules_label != null:
-		rules_label.text = "On each turn, draw one card from the stock or discard pile, then discard one card. Melds are sets of equal rank or runs in one suit. Aces are low only: A-2-3 is a run, but Q-K-A is not. Deadwood is the unmatched card value. Knock when your deadwood is 10 or less; strategy favors building melds before dumping high cards."
+		rules_label.text = "On each turn, draw one card from the stock or discard pile, then discard one card. Melds are sets of equal rank or runs in one suit. Aces are low only: A-2-3 is a run, but Q-K-A is not. After drawing, you may knock by discarding to 10 or fewer deadwood, or go gin by discarding to 0. A non-gin defender may lay off deadwood onto the knocker's melds before scoring. Gin scores a 25-point bonus; an undercut scores a 25-point bonus for the defender."
 	var section := UiFactory.make_section()
 	add_child(section)
 	table_label = UiFactory.make_info_label()
@@ -50,7 +50,7 @@ func setup(p_status_label: Label, p_score_label: Label = null, p_rules_label: La
 	var controls := UiFactory.make_button_row()
 	controls.alignment = BoxContainer.ALIGNMENT_CENTER
 	section.add_child(controls)
-	knock_button = UiFactory.make_action_button("Knock", _knock)
+	knock_button = UiFactory.make_action_button("Knock/Gin", _knock)
 	controls.add_child(knock_button)
 	controls.add_child(UiFactory.make_secondary_button("New Hand", _restart))
 	reveal_toggle = CheckBox.new()
@@ -113,16 +113,27 @@ func _update() -> void:
 	status_label.text = UiFactory.coach_message(model.last_message, model.guidance_text())
 	facts_label.text = "Valid players: 2 | Computer opponents: 1 | %s" % model.score_text()
 	if score_label != null:
-		score_label.text = "%s\nYour deadwood: %d\nComputer cards: %d\nTop discard: %s" % [
+		score_label.text = "%s\nYour deadwood: %d\nComputer cards: %d\nTop discard: %s\nLast result: %s" % [
 			model.score_text(),
 			GinRummyModel.deadwood(model.player),
 			model.bot.size(),
-			top_card_text()
+			top_card_text(),
+			model.last_score_detail
 		]
 	phase_label.text = _phase_text()
 	hand_label.text = _hand_text()
 	hand_box.add_theme_constant_override("separation", 8)
-	knock_button.disabled = model.phase != "draw" or GinRummyModel.deadwood(model.player) > 10
+	var knock_discard := model.best_player_knock_discard()
+	knock_button.disabled = model.phase != "discard" or knock_discard.is_empty()
+	if knock_discard.is_empty():
+		knock_button.text = "Knock/Gin"
+		knock_button.tooltip_text = "Draw first, then discard to 10 or fewer deadwood to knock."
+	else:
+		var knock_test := model.player.duplicate()
+		knock_test.erase(knock_discard)
+		var knock_deadwood := GinRummyModel.deadwood(knock_test)
+		knock_button.text = "Gin" if knock_deadwood == 0 else "Knock"
+		knock_button.tooltip_text = "End the hand by discarding %s for %d deadwood." % [CardTools.card_text(knock_discard), knock_deadwood]
 	pile_box.add_child(_make_stock_pile())
 	if not model.discard.is_empty():
 		pile_box.add_child(_make_discard_pile())
@@ -231,7 +242,6 @@ func _build_grouped_hand(recommended_discard: Dictionary) -> void:
 	for i in range(model.player.size()):
 		if not used_indices.has(i):
 			deadwood_cards.append(model.player[i])
-	meld_cards.sort_custom(CardTools.sort_cards)
 	deadwood_cards.sort_custom(CardTools.sort_cards)
 	hand_box.add_child(_make_stable_hand_section(
 		"Melds: %d group%s" % [meld_groups.size(), "" if meld_groups.size() == 1 else "s"],
@@ -336,6 +346,8 @@ func _make_hand_card_button(card: Dictionary, recommended_discard: Dictionary, f
 			button.tooltip_text = "Newly drawn card from the %s." % model.last_draw_source
 		else:
 			button.tooltip_text = "Discard this card." if not is_recommended else "Coach suggestion: discard this card."
+		if not model.best_player_knock_discard().is_empty():
+			button.tooltip_text += " Use the Knock/Gin button instead if you want to end the hand now."
 	else:
 		button.tooltip_text = "Keep reading your hand, then choose the stock pile or discard pile."
 	return button
@@ -432,7 +444,7 @@ func _phase_text() -> String:
 		"draw":
 			return "Step 1: click either pile to draw one card"
 		"discard":
-			return "Step 2: click one card in your hand to discard"
+			return "Step 2: discard one card, or use Knock/Gin if it is available"
 		"bot":
 			return "Computer is taking its turn"
 		"done":
@@ -444,7 +456,7 @@ func _hand_text() -> String:
 		"draw":
 			return "Your hand is locked until you draw."
 		"discard":
-			return "Choose one discard. The blue card is newly drawn; the gold card is the basic coach suggestion."
+			return "Choose one discard. The blue card is newly drawn; the gold card is the basic coach suggestion. Knock/Gin ends the hand now."
 		"done":
 			return "Start a new hand to keep practicing."
 	return ""

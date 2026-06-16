@@ -19,6 +19,15 @@ func _run() -> void:
 	if not _verify_four_of_kind_can_split_for_run():
 		quit(1)
 		return
+	if not _verify_gin_bonus_scoring():
+		quit(1)
+		return
+	if not _verify_knock_layoff_undercut_scoring():
+		quit(1)
+		return
+	if not _verify_player_knock_discards_and_finishes():
+		quit(1)
+		return
 	print("Gin Rummy discard verification passed.")
 	quit()
 
@@ -110,6 +119,70 @@ func _verify_four_of_kind_can_split_for_run() -> bool:
 		return false
 	if GinRummyModel.deadwood(hand) != 0:
 		push_error("Split set/run hand should have zero deadwood")
+		return false
+	return true
+
+func _verify_gin_bonus_scoring() -> bool:
+	var model := GinRummyModel.new()
+	model.player = [
+		_card("2", "H"), _card("3", "H"), _card("4", "H"),
+		_card("6", "C"), _card("7", "C"), _card("8", "C"),
+		_card("9", "S"), _card("9", "H"), _card("9", "D"), _card("9", "C"),
+	]
+	model.bot = [_card("K", "S"), _card("Q", "D"), _card("J", "C"), _card("5", "H"), _card("2", "D")]
+	model.finish_hand("You go gin.", "player")
+	if model.player_score != 62:
+		push_error("Gin should score defender deadwood plus 25; got %d" % model.player_score)
+		return false
+	if model.computer_score != 0 or model.hands_played != 1:
+		push_error("Gin scoring updated the wrong counters")
+		return false
+	return true
+
+func _verify_knock_layoff_undercut_scoring() -> bool:
+	var model := GinRummyModel.new()
+	model.player = [
+		_card("4", "H"), _card("5", "H"), _card("6", "H"),
+		_card("2", "C"), _card("3", "C"), _card("4", "C"),
+		_card("9", "S"), _card("9", "H"), _card("9", "D"),
+		_card("8", "S"),
+	]
+	model.bot = [
+		_card("K", "S"), _card("K", "H"), _card("K", "D"),
+		_card("7", "H"), _card("2", "D"),
+	]
+	model.finish_hand("You knock.", "player")
+	if model.player_score != 0:
+		push_error("Player should not score when undercut")
+		return false
+	if model.computer_score != 31:
+		push_error("Undercut should score 8-2+25 = 31; got %d" % model.computer_score)
+		return false
+	if model.last_score_detail.find("7H") < 0:
+		push_error("Scoring detail should show defender layoff card: %s" % model.last_score_detail)
+		return false
+	return true
+
+func _verify_player_knock_discards_and_finishes() -> bool:
+	var model := GinRummyModel.new()
+	model.phase = "discard"
+	model.discard = []
+	model.player = [
+		_card("2", "H"), _card("3", "H"), _card("4", "H"),
+		_card("6", "C"), _card("7", "C"), _card("8", "C"),
+		_card("9", "S"), _card("9", "H"), _card("9", "D"), _card("9", "C"),
+		_card("K", "D"),
+	]
+	model.bot = [_card("Q", "S"), _card("J", "D"), _card("8", "C")]
+	var result := model.knock()
+	if model.phase != "done":
+		push_error("Knock action should finish the hand; result was %s" % result)
+		return false
+	if model.discard.is_empty() or CardTools.card_text(model.discard[-1]) != "KD":
+		push_error("Knock action should discard the selected high deadwood card")
+		return false
+	if model.player_score != 53:
+		push_error("Knock action should score gin after discarding to zero deadwood; got %d" % model.player_score)
 		return false
 	return true
 

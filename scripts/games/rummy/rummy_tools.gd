@@ -68,6 +68,18 @@ static func deadwood_score(hand: Array) -> int:
 			total += card_points(hand[i])
 	return total
 
+static func deadwood_cards(hand: Array) -> Array:
+	var used := best_meld_mask(hand)
+	var cards := []
+	for i in range(hand.size()):
+		if not used.has(i):
+			cards.append(hand[i])
+	return cards
+
+static func best_deadwood_after_layoff(defender_hand: Array, target_melds: Array) -> Dictionary:
+	var melds := candidate_melds(defender_hand)
+	return _defense_layout_search(defender_hand, melds, target_melds, 0, [], [], 0)
+
 static func best_meld_groups(hand: Array) -> Array:
 	var melds := candidate_melds(hand)
 	var result := search_meld_groups(hand, melds, 0, [], [], 0)
@@ -149,6 +161,81 @@ static func search_meld_groups(hand: Array, melds: Array, index: int, current_ma
 	if int(with_meld["value"]) > int(best["value"]):
 		return with_meld
 	return best
+
+static func _defense_layout_search(hand: Array, melds: Array, target_melds: Array, index: int, current_mask: Array, current_groups: Array, current_value: int) -> Dictionary:
+	if index >= melds.size():
+		var deadwood := []
+		for i in range(hand.size()):
+			if not current_mask.has(i):
+				deadwood.append(hand[i])
+		var layoff := _best_layoff_result(deadwood, target_melds)
+		return {
+			"deadwood": int(layoff["deadwood"]),
+			"laid_off": layoff["laid_off"],
+			"remaining": layoff["remaining"],
+			"groups": current_groups.duplicate(true),
+			"meld_value": current_value,
+		}
+	var best: Dictionary = _defense_layout_search(hand, melds, target_melds, index + 1, current_mask, current_groups, current_value)
+	var meld: Array = melds[index]
+	for item in meld:
+		if current_mask.has(item):
+			return best
+	for item in meld:
+		current_mask.append(item)
+	current_groups.append(meld.duplicate())
+	var value := 0
+	for item in meld:
+		value += card_points(hand[item])
+	var with_meld: Dictionary = _defense_layout_search(hand, melds, target_melds, index + 1, current_mask, current_groups, current_value + value)
+	current_groups.pop_back()
+	for item in meld:
+		current_mask.erase(item)
+	return _better_defense(with_meld, best)
+
+static func _better_defense(candidate: Dictionary, current: Dictionary) -> Dictionary:
+	if int(candidate["deadwood"]) < int(current["deadwood"]):
+		return candidate
+	if int(candidate["deadwood"]) == int(current["deadwood"]) and int(candidate["meld_value"]) > int(current["meld_value"]):
+		return candidate
+	return current
+
+static func _best_layoff_result(deadwood: Array, target_melds: Array) -> Dictionary:
+	return _layoff_search(deadwood, _duplicate_meld_groups(target_melds), 0, [], [])
+
+static func _layoff_search(deadwood: Array, meld_groups: Array, index: int, laid_off: Array, remaining: Array) -> Dictionary:
+	if index >= deadwood.size():
+		return {
+			"deadwood": hand_points(remaining),
+			"laid_off": laid_off.duplicate(),
+			"remaining": remaining.duplicate(),
+		}
+	var card: Dictionary = deadwood[index]
+	var keep_remaining := remaining.duplicate()
+	keep_remaining.append(card)
+	var best: Dictionary = _layoff_search(deadwood, meld_groups, index + 1, laid_off, keep_remaining)
+	for meld_index in range(meld_groups.size()):
+		if can_layoff(card, meld_groups[meld_index]):
+			var next_melds := _duplicate_meld_groups(meld_groups)
+			next_melds[meld_index].append(card)
+			var next_laid_off := laid_off.duplicate()
+			next_laid_off.append(card)
+			var candidate: Dictionary = _layoff_search(deadwood, next_melds, index + 1, next_laid_off, remaining)
+			best = _better_layoff(candidate, best)
+	return best
+
+static func _better_layoff(candidate: Dictionary, current: Dictionary) -> Dictionary:
+	if int(candidate["deadwood"]) < int(current["deadwood"]):
+		return candidate
+	if int(candidate["deadwood"]) == int(current["deadwood"]) and hand_points(candidate["laid_off"]) > hand_points(current["laid_off"]):
+		return candidate
+	return current
+
+static func _duplicate_meld_groups(groups: Array) -> Array:
+	var duplicated := []
+	for group in groups:
+		duplicated.append(group.duplicate())
+	return duplicated
 
 static func choose_discard(hand: Array) -> Dictionary:
 	var best_card: Dictionary = hand[0]
